@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taxi-demand-dispatch"
+version = "0.1.0"
+description = "Taxi demand prediction and dynamic dispatch simulation"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.2,<10",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "module1_simulation*",
+    "module2_preprocessing*",
+    "module3_prediction*",
+    "module4_dispatch*",
+]
+namespaces = true
+
+[tool.pytest.ini_options]
+minversion = "9.2"
+testpaths = ["tests"]
+addopts = "-ra --strict-config --strict-markers"

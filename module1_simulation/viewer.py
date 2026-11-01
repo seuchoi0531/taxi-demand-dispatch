@@ -12,7 +12,7 @@ from panda3d.core import (
     NodePath, TextNode, Vec4, WindowProperties,
 )
 
-from .simulation import Simulation
+from .demo import DemoRunner
 
 
 def _unit_box() -> NodePath:
@@ -44,16 +44,20 @@ def _unit_box() -> NodePath:
 
 
 class CityApp(ShowBase):
-    def __init__(self, simulation: Simulation, *, window_type: str = "onscreen") -> None:
+    def __init__(self, runner: DemoRunner, *, window_type: str = "onscreen") -> None:
         super().__init__(windowType=window_type)
         self.disableMouse()
-        self.simulation = simulation
+        self.runner = runner
+        self.simulation = runner.simulation
+        self._selected_taxi = 0
+        self._selected_call = 0
+        self._message = ""
         self.paused = False
         self.playback_speed = 1.0
         self._accumulator = 0.0
         self._angle = -55.0
         self._elevation = 55.0
-        self._radius = 145.0
+        self._radius = 158.0
         self._cube = _unit_box()
         self.setBackgroundColor(1, 1, 1)
         self.render.setAntialias(AntialiasAttrib.MAuto)
@@ -67,12 +71,16 @@ class CityApp(ShowBase):
         self._lights()
         self._city()
         self.taxi_nodes = {taxi.taxi_id: self._taxi(taxi.taxi_id, i)
-                           for i, taxi in enumerate(simulation.config.taxis)}
+                           for i, taxi in enumerate(self.simulation.snapshot())}
+        self.passenger_nodes = {}
         self.show_details = False
         self._build_hud()
         self.accept("space", self.toggle_pause)
         self.accept("r", self.reset_simulation)
         self.accept("d", self.toggle_details)
+        self.accept("t", self.cycle_selection, ["taxi"])
+        self.accept("c", self.cycle_selection, ["call"])
+        self.accept("enter", self.manual_dispatch)
         self.accept("escape", self.userExit)
         for key, speed in (("1", 0.5), ("2", 1.0), ("3", 2.0)):
             self.accept(key, self.set_speed, [speed])
@@ -111,6 +119,10 @@ class CityApp(ShowBase):
                          (0.12, 0.15, 0.18, 1), TextNode.ARight, True)
         self._playback = text("", self.a2dTopRight, -0.09, -0.20,
                               align=TextNode.ARight, change=True)
+        self._summary = text("", self.a2dTopRight, -0.09, -0.29, 0.029,
+                             align=TextNode.ARight, change=True)
+        self._wait_summary = text("", self.a2dTopRight, -0.09, -0.35, 0.027,
+                                  align=TextNode.ARight, change=True)
         self._fleet_rows = []
         self._coordinate_rows = []
         for index in range(3):
@@ -122,6 +134,12 @@ class CityApp(ShowBase):
                                          (0.24, 0.28, 0.32, 1), change=True))
             self._coordinate_rows.append(text("", self.a2dTopLeft, 0.12, y - 0.055,
                                               0.026, change=True))
+        mode = "Auto demo / nearest available taxi" if self.runner.auto_assign else "Manual / waiting for commands"
+        self._mode_text = text(mode,
+                               self.a2dTopLeft, 0.09, -0.93, 0.027)
+        self._selection = text("", self.a2dTopLeft, 0.09, -1.04, 0.026, change=True)
+        self._notice = text("", self.a2dBottomLeft, 0.09, 0.22, 0.027,
+                            (0.65, 0.28, 0.18, 1), change=True)
         text("SPACE  Play / pause     R  Reset     1 / 2 / 3  Speed",
              self.a2dBottomLeft, 0.09, 0.14, 0.027)
         text("Arrows  Orbit     Scroll  Zoom     D  Coordinates     Esc  Exit",
@@ -129,6 +147,29 @@ class CityApp(ShowBase):
 
     def toggle_details(self) -> None:
         self.show_details = not self.show_details
+        self.refresh()
+
+    def cycle_selection(self, target: str) -> None:
+        if target == "taxi":
+            self._selected_taxi = (self._selected_taxi + 1) % 3
+        elif target == "call":
+            self._selected_call += 1
+        self.refresh()
+
+    def manual_dispatch(self) -> None:
+        if self.runner.auto_assign:
+            self._message = "Manual controls: restart with --manual."
+        else:
+            taxi = self.simulation.snapshot()[self._selected_taxi]
+            try:
+                calls = [p for p in self.simulation.passenger_snapshots() if p.state == "waiting"]
+                if not calls:
+                    raise ValueError("No waiting calls to assign.")
+                call = calls[self._selected_call % len(calls)]
+                self.simulation.dispatch(taxi.taxi_id, call.call_id)
+                self._message = "Command accepted."
+            except ValueError as exc:
+                self._message = str(exc)
         self.refresh()
 
     def _box(self, parent, position, scale, color):
@@ -189,7 +230,8 @@ class CityApp(ShowBase):
             for y in (-1.0, 1.0):
                 self._box(root, (x, y, 0.4), (0.25, 0.65, 0.65), (0.04, 0.05, 0.07, 1))
         self._box(root, (0, 1.63, 0.7), (1.3, 0.08, 0.25), (1, 1, 0.8, 1))
-        self._box(root, (0, -0.2, 1.8), (0.8, 0.45, 0.35), (1, 0.88, 0.45, 1))
+        beacon = self._box(root, (0, -0.2, 1.8), (0.8, 0.45, 0.35), (1, 0.88, 0.45, 1))
+        beacon.setName("status-beacon")
         label = TextNode(f"label-{taxi_id}")
         label.setText(f"{index + 1:02d}")
         label.setAlign(TextNode.ACenter)
@@ -201,6 +243,43 @@ class CityApp(ShowBase):
         label_node.setLightOff()
         label_node.setColor(1, 1, 1, 1)
         return root
+
+    def _passenger(self, call_id: str):
+        root = self.render.attachNewNode(f"passenger-{call_id}")
+        self._box(root, (0, 0, 0.9), (0.65, 0.45, 1.05), (0.2, 0.5, 0.9, 1))
+        self._box(root, (0, 0, 1.7), (0.5, 0.5, 0.5), (0.95, 0.76, 0.58, 1))
+        for x in (-0.19, 0.19):
+            self._box(root, (x, 0, 0.25), (0.23, 0.3, 0.5), (0.22, 0.27, 0.33, 1))
+        label = TextNode(f"label-{call_id}")
+        label.setText(call_id)
+        label.setAlign(TextNode.ACenter)
+        label.setTextColor(0.12, 0.3, 0.5, 1)
+        label_node = root.attachNewNode(label)
+        label_node.setPos(0, 0, 2.7)
+        label_node.setScale(0.9)
+        label_node.setBillboardPointEye()
+        label_node.setLightOff()
+        return root
+
+    def _sync_passengers(self, passengers) -> None:
+        visible = {
+            p.call_id: p for p in passengers
+            if p.state in ("waiting", "assigned") or (
+                p.state == "completed"
+                and self.simulation.time_seconds - p.completed_at_seconds < 3)
+        }
+        for call_id in self.passenger_nodes.keys() - visible.keys():
+            self.passenger_nodes.pop(call_id).removeNode()
+        for call_id, passenger in visible.items():
+            if call_id not in self.passenger_nodes:
+                self.passenger_nodes[call_id] = self._passenger(call_id)
+            model = self.passenger_nodes[call_id]
+            # Stand beside the road; this offset is presentation only.
+            model.setPos(passenger.x_m + 1.2, passenger.y_m + 1.2, 0.1)
+            if passenger.state == "completed":
+                model.setColorScale(0.75, 1, 0.8, 1)
+            else:
+                model.clearColorScale()
 
     def orbit(self, angle: float, elevation: float) -> None:
         self._angle += angle
@@ -225,23 +304,44 @@ class CityApp(ShowBase):
         self.refresh()
 
     def reset_simulation(self) -> None:
-        self.simulation.reset()
+        self.runner.reset()
+        self._message = ""
+        self._selected_call = 0
         self._accumulator = 0.0
         self.refresh()
 
     def refresh(self) -> None:
         taxis = self.simulation.snapshot()
+        passengers = self.simulation.passenger_snapshots()
+        colors = {"idle": (1, 0.82, 0.3, 1), "to_pickup": (0.25, 0.55, 1, 1),
+                  "occupied": (0.22, 0.75, 0.48, 1)}
         for taxi in taxis:
             node = self.taxi_nodes[taxi.taxi_id]
             node.setPos(taxi.x_m, taxi.y_m, 0.1)
             node.setH(taxi.heading_degrees)
+            node.find("**/status-beacon").setColor(*colors[taxi.state])
+        self._sync_passengers(passengers)
         self._hud.setText(f"Simulation time   {self.simulation.time_seconds:05.1f} s")
         self._playback.setText(
             f"{'Paused' if self.paused else 'Playing'}   /   {self.playback_speed:g}x speed")
+        waiting = sum(p.state in ("waiting", "assigned") for p in passengers)
+        onboard = sum(p.state == "onboard" for p in passengers)
+        metrics = self.simulation.metrics()
+        self._summary.setText(f"Waiting {waiting}   /   Onboard {onboard}   /   Completed {metrics['completed_calls']}")
+        wait = metrics["mean_wait_seconds"]
+        self._wait_summary.setText("Mean pickup wait   " + (f"{wait:.1f} s" if wait is not None else "-"))
+        states = {"idle": "Waiting", "to_pickup": "Picking up", "occupied": "With passenger"}
         for index, taxi in enumerate(taxis):
-            self._fleet_rows[index].setText(f"Taxi {index + 1:02d}    Moving")
+            self._fleet_rows[index].setText(f"Taxi {index + 1:02d}    {states[taxi.state]}")
             self._coordinate_rows[index].setText(
-                f"x {taxi.x_m:.1f} m   /   y {taxi.y_m:.1f} m" if self.show_details else "")
+                f"x {taxi.x_m:.1f} m   /   y {taxi.y_m:.1f} m" if self.show_details
+                else (taxi.call_id or ""))
+        self._notice.setText(self._message)
+        if not self.runner.auto_assign:
+            waiting_calls = [p for p in passengers if p.state == "waiting"]
+            call = waiting_calls[self._selected_call % len(waiting_calls)].call_id if waiting_calls else "none"
+            self._selection.setText(
+                f"T  Taxi {self._selected_taxi + 1:02d}\nC  Call: {call}\nEnter  Assign")
 
     def _update(self, task):
         if not self.paused:
@@ -249,7 +349,11 @@ class CityApp(ShowBase):
             step = self.simulation.config.tick_seconds
             ticks = int(self._accumulator / step)
             if ticks:
-                self.simulation.advance(ticks)
+                try:
+                    self.runner.advance(ticks)
+                except ValueError as exc:
+                    self.paused = True
+                    self._message = f"Simulation stopped: {exc}"
                 self._accumulator -= ticks * step
                 self.refresh()
         return task.cont

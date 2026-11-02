@@ -1,0 +1,6 @@
+# 합성 통합 테스트 입력. tick_seconds는 Module 1 설정과 일치시킨다.
+seed = 42
+call_count = 60
+start_seconds = 0.0
+interval_seconds = 10.0
+tick_seconds = 0.05

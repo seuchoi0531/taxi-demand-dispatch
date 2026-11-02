@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Module 2 offline training row 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["prediction_time_seconds", "zone_id", "source_kind", "lag_1", "lag_2", "lag_3", "lag_6", "lag_12", "rolling_mean_3", "rolling_mean_6", "rolling_mean_12", "target_1", "target_2", "target_3", "target_4", "target_5", "target_6"],
+  "properties": {
+    "prediction_time_seconds": {"type": "integer", "minimum": 0, "multipleOf": 300},
+    "zone_id": {"type": "string", "pattern": "^zone-[0-2]-[0-2]$"},
+    "source_kind": {"enum": ["real", "synthetic"]},
+    "lag_1": {"type": "integer", "minimum": 0},
+    "lag_2": {"type": "integer", "minimum": 0},
+    "lag_3": {"type": "integer", "minimum": 0},
+    "lag_6": {"type": "integer", "minimum": 0},
+    "lag_12": {"type": "integer", "minimum": 0},
+    "rolling_mean_3": {"type": "number", "minimum": 0},
+    "rolling_mean_6": {"type": "number", "minimum": 0},
+    "rolling_mean_12": {"type": "number", "minimum": 0},
+    "target_1": {"type": "integer", "minimum": 0},
+    "target_2": {"type": "integer", "minimum": 0},
+    "target_3": {"type": "integer", "minimum": 0},
+    "target_4": {"type": "integer", "minimum": 0},
+    "target_5": {"type": "integer", "minimum": 0},
+    "target_6": {"type": "integer", "minimum": 0}
+  }
+}

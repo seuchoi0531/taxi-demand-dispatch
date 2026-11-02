@@ -169,3 +169,57 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
 택시 설정은 `initial_node`, 호출 식별자는 `call_id`로 전환한다.
 이 계약은 첫 소비자 통합 전 변경 가능하며, 변경 시 이 문서·결정 기록·계약 테스트를 함께 수정한다.
 
+## 7. Module 2 → Module 3 데이터 처리 기준
+
+2026-11-02 사용자 지정 및 후속 승인 기준이다.
+이 절의 기준 확정은 Module 3 소비자 구현 완료를 의미하지 않는다.
+
+- 수요는 출발 구역별 호출 **발생 건수**다. 픽업·하차 건수와 구분한다.
+- 공간은 6절의 좌표와 `zone-x-y`를 사용한다. 시간 집계는 5분이다.
+- 호출이 없는 완전 수집 구간은 0이다. 수집 누락을 0으로 간주하지 않는다.
+- 과거 12개 구간(60분)으로 `lag_1`, `lag_2`, `lag_3`, `lag_6`, `lag_12`,
+  `rolling_mean_3`, `rolling_mean_6`, `rolling_mean_12`를 만든다.
+- 모든 피처는 예측 시점에 이용 가능한 과거 데이터만 사용한다.
+- 향후 30분을 5분 단위 6개 구간으로 나누어 `target_1`~`target_6`을 만든다.
+  타깃은 각 구간의 호출 수이며 누적 수요가 아니다.
+- Train/Validation/Test는 시간순 70%/15%/15%다.
+  미래 타깃이 분할 경계를 넘는 샘플은 제외한다.
+- Module 3 학습 입력은 CSV로 생성하고, 향후 통신용 JSON 스키마도 문서화한다.
+- 일정 간격·고정 호출량 샘플의 학습 한계를 보고한다.
+  실제 데이터가 없으면 시간대·구역별 변동을 갖는 합성 데이터 방안을 제안한다.
+
+### 실행 가능한 교환 구조
+
+- 기존 호출 JSON `0.1`은 변경하지 않는다. 호출은 출발 교차로의 구역에 집계한다.
+- `coverage.csv`의 필수 열은 `interval_start_seconds,zone_id,is_complete`다.
+  시작 시각은 0 이상인 300초 배수 정수, 구역은 기존 9개 구역,
+  완료 여부는 소문자 `true` 또는 `false`다. 중복 키와 알 수 없는 열·구역은 오류다.
+  명시한 관측 범위 `[start_seconds,end_seconds)` 밖 입력도 오류다.
+  미기록 또는 false인 구간의 수요는 null이며 부분 수집 호출 수도 정답으로 사용하지 않는다.
+- coverage 템플릿 생성은 전 구간 false로 시작한다. true 지정은 입력 제공자가
+  수집 로그 또는 합성 생성 완료 기록으로 확인해야 하며, 전처리 실행 시 `coverage_evidence`를
+  필수 기록한다. 근거 문자열의 진위를 자동 검증하는 기능은 없다.
+- 데이터 출처는 실행 시 `source_kind`=`real` 또는 `synthetic`으로 명시한다.
+  파일명으로 추측하지 않는다. 전체 호출 JSON은 오프라인 학습 전용이며 온라인 예측 입력으로 보내지 않는다.
+- 예측 시각 t는 300초 경계다. lag_k는 `[t-k*300,t-(k-1)*300)`의 수요,
+  rolling_mean_k는 직전 k구간의 평균, target_k는 `[t+(k-1)*300,t+k*300)` 수요다.
+  t 시각 호출은 target_1에만 포함된다. 실제 데이터는 해당 과거 구간이 t까지 수집 완료됐음을
+  제공자가 확인해야 한다. 수집 지연을 자동 보정하지 않는다.
+- 직전 12구간 또는 미래 6구간에 누락이 하나라도 있으면 해당 구역의 학습 행을 제외한다.
+  초기 과거 부족과 말미 미래 부족도 제외한다. 임의 보간·정규화·통계 적합은 하지 않는다.
+- 시간 분할 경계는 관측 구간 수 N에 대해 start+floor(0.70N)*300,
+  start+floor(0.85N)*300이다. 모든 구역에 동일 적용한다.
+  예측 시각으로 분할을 선택하며 t+1800이 그 분할 종료보다 크면 행을 제외한다.
+  경계와 정확히 같은 타깃 종료는 허용한다. 검증·테스트 피처는 앞 구간의 과거를 사용할 수 있다.
+  제외 후 실제 행 비율은 70:15:15와 다를 수 있다.
+- `train.csv`, `validation.csv`, `test.csv` 열 순서는
+  `prediction_time_seconds,zone_id,source_kind,lag_1,lag_2,lag_3,lag_6,lag_12,rolling_mean_3,rolling_mean_6,rolling_mean_12,target_1,target_2,target_3,target_4,target_5,target_6`이다.
+  시각·lag·타깃은 0 이상 정수, 평균은 유한한 0 이상 수다. 학습 CSV에는 결측 행을 넣지 않는다.
+  시각, 구역 순으로 정렬한다. `source_kind`는 출처 표시이며 학습 피처가 아니다.
+- `aggregates.csv`는 `interval_start_seconds,zone_id,is_complete,demand`를 담는다.
+  누락 demand는 빈 칸, 실제 0건은 0이다. `report.json`은 출처·근거·설정·분할 경계·제외 건수·품질 경고를 기록한다.
+- 향후 JSON 전송용 학습 행의 구조는 `docs/contracts/module2_training_row.schema.json`이다.
+  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 타깃을 제거한 온라인 추론 계약은 후속 합의 대상이다.
+- 공개 API: `from module2_preprocessing import aggregate_calls, build_dataset, write_dataset, write_coverage_template`.
+  Module 3 소비자는 미구현이므로 스키마 검증과 생산자 계약 테스트를 먼저 제공한다.
+

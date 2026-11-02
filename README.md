@@ -1,7 +1,8 @@
 # 택시 수요 예측 및 동적 배차
 
 가상 도시에서 수요 예측과 동적 배차를 비교하는 Python 프로젝트입니다.
-현재 구현은 Module 1의 차량·승객 운행과 명령 실행 환경입니다.
+현재 구현은 Module 1의 차량·승객 운행과 명령 실행 환경,
+Module 2의 합성 호출 생성 및 coverage 기반 학습 데이터 전처리입니다.
 
 - 3×3 블록 도시와 도로
 - 택시 3대의 대기·픽업·탑승 운행·하차
@@ -48,7 +49,10 @@ Space로 일시정지/재개, R로 초기화합니다. 1/2/3은 0.5/1/2배속,
 
 `module1_simulation/`은 시뮬레이션, `module2_preprocessing/`은 데이터 처리,
 `module3_prediction/`은 예측, `module4_dispatch/`는 배차 담당 영역입니다.
-Module 2~4는 아직 기본 패키지만 있습니다. 설정은 `configs/`, 테스트는
+Module 2는 유한 호출 생성, 수집 누락을 구분하는 집계와 피처·타깃 생성,
+시간순 분할 및 Module 3용 CSV 출력을 제공합니다.
+[Module 2 사용법](docs/module2_preprocessing.md)을 참고하세요.
+Module 3~4는 아직 기본 패키지만 있습니다. 설정은 `configs/`, 테스트는
 `tests/`, 공용 명세와 계약은 `docs/`에서 관리합니다.
 
 예측·Module 4의 정식 배차 정책·비교 실험은 아직 구현하지 않았습니다.

@@ -1,0 +1,19 @@
+# Module 1 운행 시연 설정. 경계 의미는 docs/contracts/common_contracts.md 참조.
+blocks = 3
+block_size_m = 20.0
+tick_seconds = 0.05
+
+[[taxis]]
+taxi_id = "taxi-1"
+speed_mps = 5.0
+initial_node = [0, 0]
+
+[[taxis]]
+taxi_id = "taxi-2"
+speed_mps = 4.0
+initial_node = [1, 1]
+
+[[taxis]]
+taxi_id = "taxi-3"
+speed_mps = 6.0
+initial_node = [3, 2]

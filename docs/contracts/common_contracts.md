@@ -60,3 +60,112 @@
 
 한 모듈의 단위 테스트만 통과했다는 이유로 공용 계약 변경을 완료된 것으로 판단하지 않는다.
 
+## 6. Module 1 운행 경계 — 임시 `0.1`
+
+사용자가 승인한 차량·승객 운행 구현의 임시 계약이다. Module 2~4의
+구현과 전체 팀 합의는 아직 없으며, 해당 모듈 통합 전에 재검토한다.
+문서가 필드 의미의 원본이다. 공용 교환 형식은 Python 기본 자료형
+(`dict`, `list`, 문자열, 수, `None`)이며 JSON으로 표현할 수 있다.
+별도 공용 패키지·스키마 라이브러리는 도입하지 않는다.
+Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파일을 import하지 않는다.
+공개 진입점은 `from module1_simulation import Simulation, load_config, load_calls`이다.
+
+### 좌표·구역·시간
+
+- 도시: 3×3 블록, 교차로 `(x, y)`는 각 축 0~3의 정수.
+- 원점은 좌하단, 동쪽 +x, 북쪽 +y. 화면 z는 높이이며 이동 계산에 사용하지 않는다.
+- 교차로 간격은 설정 `block_size_m`(미터), 속도는 `speed_mps`(m/s).
+- 인접 교차로 사이 양방향 도로를 사용한다. 최단 경로가 여러 개면 x축 이동 후 y축 이동한다.
+- 구역 ID는 `zone-x-y`(x,y 각각 0~2)이다. 지점의 소속 구역은 동·북쪽 블록을 택하되
+  도시 동·북쪽 외곽선에서는 마지막 블록을 사용한다. 경계 공유를 해결하는
+  임시 규칙이며 invalid 좌표를 도시 안으로 보정하는 규칙이 아니다.
+- 시뮬레이션 초는 0에서 시작한다. `tick_seconds`는 유한한 양수.
+  호출·시연 명령 시각은 tick의 정수 배수여야 하며 다른 시각은 오류다
+  (부동소수점 표현 오차만 허용). 이동 도착 시각은 tick 사이에도 정확히 기록한다.
+- 같은 구간에서 모든 차량을 독립적으로 이동시키고 도착·픽업·하차를 처리한다.
+  구간 끝 시각에 호출을 발생시킨 뒤 외부 명령을 받는다.
+  최초 시각 0에도 호출이 먼저 발생한다. 같은 시각 호출은 `call_id` 순서,
+  차량 이벤트는 `taxi_id` 순서로 결정한다. 외부 명령은 호출한 순서로 처리한다.
+- 픽업·하차 시간은 0초이며, 같은 출발·도착 지점도 허용한다.
+  한 tick의 남은 시간은 다음 운행 단계 또는 대기 시간에 계속 반영한다.
+
+### 호출 입력(Module 2 → Module 1)
+
+`load_calls(path)`는 `{"schema_version":"0.1", "calls":[...]}` JSON을 읽는다.
+각 호출의 아래 필드는 모두 필수이다. 알 수 없는 필드는 오류로 거부한다.
+
+| 필드 | 형식 | 의미 |
+|---|---|---|
+| `call_id` | 비어 있지 않은 고유 문자열 | 호출 ID, 이 MVP에서는 승객 1명과 1:1 |
+| `requested_at_seconds` | 유한한 0 이상 수 | 호출 발생 시뮬레이션 시각 |
+| `origin` | `[x,y]` | 출발 교차로 |
+| `destination` | `[x,y]` | 도착 교차로 |
+
+`Simulation(config, calls)`에 전체 호출을 적재하되 `observe()`와 이벤트에는
+**발생한 호출만** 노출한다. 미래 스케줄은 정책 입력에 전달하지 않는다.
+시뮬레이터는 호출 데이터 생성 알고리즘을 구현하지 않는다.
+`has_initial_calls`는 초기 호출 입력의 존재 여부만 반환하는 읽기 전용 속성이다.
+호출 내용·발생 시각은 노출하지 않으며 개발 실행기의 입력 방식 충돌 확인에 사용한다.
+
+`add_calls(calls)`로 같은 형식의 추가 입력을 받을 수 있다. 과거 시각이나
+기존 ID와 중복되는 호출은 전체 묶음을 오류로 거부한다. 현재 시각의 호출은
+즉시 발생하고 미래 시각의 호출은 시각 도달 전까지 관측에 노출하지 않는다.
+호출을 추가해도 시계·차량·기존 승객·기록은 초기화하지 않는다.
+개발 화면은 설정된 간격마다 현재 시각의 호출 한 건을 추가한다.
+출발·도착은 그 순간 추출하며, 이 개발용 입력은 Module 2의 시나리오 생성기를 대체하지 않는다.
+
+### 명령(Module 4 → Module 1)
+
+- `dispatch(taxi_id, call_id)`: `idle` 택시와 `waiting` 호출에 대해서만 허용.
+- `apply_command(command)`: `{"type":"dispatch", "taxi_id":..., "call_id":...}`
+  를 실행한다. 어떤 택시를 선택할지는 호출자가 결정하며 Module 1은 매칭 정책을 구현하지 않는다.
+  개발 화면의 `DemoRunner`는 사용자가 선택한 임시 FIFO·가까운 빈 택시 규칙으로
+  이 명령을 호출한다. 이 규칙은 `Simulation` 자체나 Module 4의 공용 정책 계약에 포함하지 않는다.
+- 잘못된 ID·지점·상태·필드·명령은 `ValueError`로 거부하고
+  `command_rejected` 이벤트에 대상과 이유를 기록한다. 운행 상태는 변경하지 않는다.
+  시연 스크립트에서도 오류를 숨기지 않는다.
+- 이번 Module 1 범위에는 재배치를 포함하지 않는다. 재배치 명령도 지원하지 않는다.
+  취소·실패 호출 생명주기는 아직 미구현이다.
+  호출 미배정은 정상적인 `waiting`이며 오류를 의미하지 않는다.
+
+### 상태 전이
+
+| 대상/현재 상태 | 이벤트 | 다음 상태 | 선행 조건 | 실패 처리 |
+|---|---|---|---|---|
+| 호출 없음 | `call_created` | `waiting` | 발생 시각 도달, 고유 ID | 잘못된 시나리오는 실행 전 오류 |
+| 택시 `idle`, 승객 `waiting` | `assigned` | `to_pickup`, `assigned` | 유효 배차 명령 | 명령 거부, 기존 상태 유지 |
+| 택시 `to_pickup`, 승객 `assigned` | `pickup_completed`, `trip_started` | `occupied`, `onboard` | 출발지 도착 | 내부 불일치 시 실행 오류 |
+| 택시 `occupied`, 승객 `onboard` | `dropoff_completed` | `idle`, `completed` | 목적지 도착 | 내부 불일치 시 실행 오류 |
+
+픽업 완료와 이동 시작은 같은 시각의 별도 이벤트이다. 하차 완료 시 택시와
+호출 연결을 해제하되 승객 기록에는 배정 택시와 배정·탑승·하차 시각을 보존한다.
+
+### 관측·이벤트·측정(Module 1 → 소비자)
+
+- `observe()`: `schema_version`, `tick`, `time_seconds`, `taxis`, `passengers`,
+  `metrics`를 포함하는 새로운 dict. `snapshot()`과 `passenger_snapshots()`는
+  Module 1 화면용 불변 snapshot이며 다른 모듈은 `observe()`를 사용한다.
+- `taxis`: `taxi_id`, `x_m`, `y_m`, `heading_degrees`, `distance_m`, `state`,
+  `call_id`(연결 없으면 null), `zone_id` 필드를 갖는다.
+- `passengers`: 발생한 호출만 포함. 입력의 네 필드와 `state`, `taxi_id`,
+  `assigned_at_seconds`, `picked_up_at_seconds`, `completed_at_seconds`,
+  `x_m`, `y_m`, `wait_seconds`를 포함한다. 미발생 타임스탬프는 null.
+  대기·배정 중 위치는 출발지, 탑승 중 위치는 택시 위치, 완료 시 목적지이다.
+- `events()`: 발생한 이벤트를 시간순으로 반환한다. 각 항목은
+  `time_seconds`, `event`, `taxi_id`, `call_id`, `details`를 포함한다.
+  동시각 순서는 기록 순서로 안정적이며 반환값 수정은 내부에 영향을 주지 않는다.
+- `metrics()`: `by_taxi`에 `idle_seconds`, `pickup_seconds`,
+  `occupied_seconds`, `distance_m`, `empty_distance_m`, `completed_calls`를 기록한다.
+  세 시간의 합은 각 택시의 관측 기간과 같다.
+- 전체 지표: `fleet_available_seconds`, `completed_calls`, `pending_calls`,
+  `picked_up_calls`, `mean_wait_seconds`(탑승 완료된 승객만의 평균, 표본 없으면 null),
+  `occupancy_percent`(공통 명세 산식, 기간 0이면 null), `rejected_commands`.
+  `pending_calls`에는 발생 후 아직 하차하지 않은 모든 호출이 포함된다.
+- 평균 공차시간의 포함 항목·분모는 아직 미확정이다. 이번에는 각 구성요소만
+  제공하고 임의의 평균 공차시간이나 개선 효과를 계산하지 않는다.
+- 초기화는 모든 상태·측정·이벤트를 지우고 같은 시나리오의 시각 0으로 돌아간다.
+
+호환성: 이전 `route` 순환 이동 설정과 `passenger_id`만 가진 객체는 폐기한다.
+택시 설정은 `initial_node`, 호출 식별자는 `call_id`로 전환한다.
+이 계약은 첫 소비자 통합 전 변경 가능하며, 변경 시 이 문서·결정 기록·계약 테스트를 함께 수정한다.
+

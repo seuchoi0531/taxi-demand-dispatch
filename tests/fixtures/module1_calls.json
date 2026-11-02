@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "calls": [
+    {"call_id": "call-1", "requested_at_seconds": 0, "origin": [1, 0], "destination": [2, 1]},
+    {"call_id": "call-2", "requested_at_seconds": 2, "origin": [0, 1], "destination": [1, 2]},
+    {"call_id": "call-3", "requested_at_seconds": 4, "origin": [3, 1], "destination": [2, 2]},
+    {"call_id": "call-4", "requested_at_seconds": 18, "origin": [3, 3], "destination": [0, 0]},
+    {"call_id": "call-5", "requested_at_seconds": 20, "origin": [0, 2], "destination": [1, 1]},
+    {"call_id": "call-6", "requested_at_seconds": 34, "origin": [2, 0], "destination": [0, 1]}
+  ]
+}

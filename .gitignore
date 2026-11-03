@@ -44,6 +44,8 @@ Thumbs.db
 Desktop.ini
 
 # Logs and temporary files
+data/generated/
+/Microsoft/Windows/PowerShell/ModuleAnalysisCache
 *.log
 *.tmp
 *.temp

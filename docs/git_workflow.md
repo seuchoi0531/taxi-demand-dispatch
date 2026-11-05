@@ -40,6 +40,7 @@
 | `refactor` | 동작을 바꾸지 않는 구조 개선 |
 | `chore` | 저장소 관리와 기타 작업 |
 | `ci` | CI 설정 변경 |
+| `merge` | 검증된 작업 브랜치를 통합하는 병합 커밋에만 사용하며 브랜치 type에는 사용하지 않음 |
 
 기본 `scope`는 다음과 같다.
 
@@ -119,8 +120,10 @@ fix(module2): 시간순 데이터 분할 오류 수정
 - Pull Request 하나는 하나의 작업 목적을 가진다.
 - Pull Request 제목은 커밋 메시지와 같은 `<type>(<scope>): <subject>` 형식을 사용한다.
 - 변경 내용, 이유, 영향 범위와 검증 결과를 Pull Request에 기록한다.
-- 기본 병합 방식은 squash merge로 한다.
-- squash된 최종 커밋 제목도 동일한 커밋 메시지 형식을 따른다.
+- 기본 병합 방식은 **merge commit**으로 한다. GitHub Pull Request에서는
+  `Create a merge commit`을 사용하여 작업 브랜치의 개별 커밋 이력을 보존한다.
+- 병합 커밋 제목은 `merge(<scope>): <subject>` 형식을 사용한다.
+- 별도 합의 없이 squash merge 또는 rebase merge를 사용하지 않는다.
 - 첫 저장소 구성처럼 이력 자체가 없는 초기 작업은 사용자 합의에 따라 `main`에 직접 커밋하고 같은 커밋에서 `develop`을 생성할 수 있다.
 - 긴급 수정으로 `main`에서 직접 분기했다면 수정 내용을 `develop`에도 반영하여 두 브랜치가 어긋나지 않게 한다.
 

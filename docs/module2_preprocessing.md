@@ -62,7 +62,8 @@ Module 1 호출 JSON을 변경하지 않으며 새 라이브러리를 사용하�
 `aggregate_calls`와 `build_dataset`은 호출 JSON 객체와 coverage 행 목록을 받는다.
 관측 시작·종료 시각과 tick을 명시한다. `build_dataset`은 출처·완료 근거도 필수다.
 반환값은 `aggregates`, `splits`, `report`이며 `write_dataset`으로 저장한다.
-Module 3 소비자가 아직 없어 실제 모델 학습 연동은 검증하지 않았다.
+Module 3 기준 예측기가 이 CSV를 직접 검증하여 소비한다. 학습 모델 연동은 아직 구현하지 않았다.
+[Module 3 사용법](module3_prediction.md)에서 평가 명령과 한계를 확인할 수 있다.
 
 개발 시 생성한 실행 예시는 `data/generated/module2_training_demo/`에 있다(버전 관리 제외).
 `generation_settings.json`은 기존 일정 간격 생성기의 재현 인자를 기록하고,

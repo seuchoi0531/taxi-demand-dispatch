@@ -219,7 +219,42 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
 - `aggregates.csv`는 `interval_start_seconds,zone_id,is_complete,demand`를 담는다.
   누락 demand는 빈 칸, 실제 0건은 0이다. `report.json`은 출처·근거·설정·분할 경계·제외 건수·품질 경고를 기록한다.
 - 향후 JSON 전송용 학습 행의 구조는 `docs/contracts/module2_training_row.schema.json`이다.
-  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 타깃을 제거한 온라인 추론 계약은 후속 합의 대상이다.
+  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 온라인 추론 계약은 아래 인계 기준을 따른다.
 - 공개 API: `from module2_preprocessing import aggregate_calls, build_dataset, write_dataset, write_coverage_template`.
   Module 3 소비자는 미구현이므로 스키마 검증과 생산자 계약 테스트를 먼저 제공한다.
+
+### Module 2 온라인 추론 피처 인계 요청
+
+PR #4의 인계 요청에 따라 구현한 온라인 추론 API다.
+
+```python
+rows = build_inference_features(
+    observed_calls,
+    coverage,
+    prediction_time_seconds=3600,
+    source_kind="synthetic",
+)
+```
+
+- 공개 진입점은 `from module2_preprocessing import build_inference_features`로 한다.
+- `observed_calls`는 6절 호출 입력의 네 필드만 가진 호출 배열이다. 예측 시각보다 미래인
+  호출을 포함하면 오류다. 예측 시각과 같은 호출은 이미 관측됐더라도 피처 구간에 넣지 않는다.
+- `prediction_time_seconds`는 3600 이상인 300초 경계다. 직전 12개 구간
+  `[t-3600,t)`만 사용한다.
+- `coverage`는 기존 coverage 행 형식으로 직전 12개 구간과 9개 구역의 완료 여부를 제공한다.
+  108개 셀 중 하나라도 없거나 `false`이면 0으로 보정하지 않고 오류다.
+- `source_kind`는 `real` 또는 `synthetic`이며 피처로 사용하지 않고 출처만 기록한다.
+- 반환값은 시각과 구역 순으로 정렬한 정확히 9개 행이다. 각 행은 7절
+  `train.csv`에서 `target_1`~`target_6`을 제거한 필드만 가진다.
+- 파일을 쓰거나 미래 타깃을 계산하지 않는다. 같은 입력은 같은 행을 반환한다.
+- 호출이 없는 완료 구간은 0이고 미완료 구간은 오류다. `lag_1`은 `[t-300,t)`,
+  `lag_12`는 `[t-3600,t-3300)`이며 rolling mean 의미는 7절과 같다.
+
+이 API의 9개 행을 Module 3 `predict()`에 하나씩 전달하면 같은 예측 시각의 9개 구역
+예측을 만들 수 있다. 오프라인 학습 CSV의 타깃 열을 제거해 온라인 입력처럼 재사용하거나
+전체 미래 호출 파일을 런타임 정책에 전달하면 안 된다.
+
+추가 검증: 과거 60분보다 오래된 호출과 t 시각 호출도 형식·ID·좌표·시각을 검증한다.
+오래된 호출은 집계에서 제외하고, coverage는 직전 108개 셀만 받으며 범위 밖 행은 오류다.
+tick 인자가 없는 온라인 API는 유한한 0 이상 호출 시각을 받고 별도 tick 정렬을 강제하지 않는다.
 

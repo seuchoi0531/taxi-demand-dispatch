@@ -54,3 +54,37 @@ def build_inference_features(observed_calls, coverage, *, prediction_time_second
         row.update({f"rolling_mean_{k}": sum(history[:k]) / k for k in WINDOWS})
         rows.append(row)
     return rows
+
+
+def build_simulation_features(observation, *, complete_since_seconds, coverage_evidence):
+    """Adapt a complete synthetic Module 1 observation to online feature rows.
+
+    The caller must attest that the cumulative observation includes every call
+    since complete_since_seconds. Never use this adapter for external real data.
+    """
+    if not isinstance(coverage_evidence, str) or not coverage_evidence.strip():
+        raise ValueError("coverage_evidence: complete simulation history evidence is required")
+    start = complete_since_seconds
+    if type(start) is not int or start < 0 or start % 300:
+        raise ValueError("complete_since_seconds: expected a non-negative 300-second boundary")
+    if not isinstance(observation, dict) or observation.get("schema_version") != "0.1":
+        raise ValueError("observation: expected Module 1 contract 0.1")
+    now = observation.get("time_seconds")
+    if type(now) not in (int, float) or not math.isfinite(now) or now < 3600 or now % 300:
+        raise ValueError("observation.time_seconds: expected a 300-second boundary >= 3600")
+    if start > now - 3600:
+        raise ValueError("coverage: complete simulation history must span the previous 60 minutes")
+    passengers = observation.get("passengers")
+    if not isinstance(passengers, list):
+        raise ValueError("observation.passengers: expected cumulative passenger history")
+    fields = ("call_id", "requested_at_seconds", "origin", "destination")
+    calls = []
+    for passenger in passengers:
+        if not isinstance(passenger, dict) or any(key not in passenger for key in fields):
+            raise ValueError("observation.passengers: missing required call fields")
+        calls.append({key: passenger[key] for key in fields})
+    t = int(now)
+    coverage = [dict(interval_start_seconds=at, zone_id=zone, is_complete="true")
+                for at in range(t - 3600, t, 300) for zone in ZONES]
+    return build_inference_features(calls, coverage, prediction_time_seconds=t,
+                                    source_kind="synthetic")

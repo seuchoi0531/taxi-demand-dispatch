@@ -258,6 +258,19 @@ rows = build_inference_features(
 오래된 호출은 집계에서 제외하고, coverage는 직전 108개 셀만 받으며 범위 밖 행은 오류다.
 tick 인자가 없는 온라인 API는 유한한 0 이상 호출 시각을 받고 별도 tick 정렬을 강제하지 않는다.
 
+### 합성 시뮬레이션 관측 연결
+
+- 공개 `build_simulation_features(observation, *, complete_since_seconds, coverage_evidence)`는
+  Module 1 `observe()`의 누적 호출 이력을 온라인 피처로 연결한다. 합성 시뮬레이션 전용이다.
+- 호출이 없다는 이유로 완료를 추정하지 않는다. 호출 누락 없이 관측됐음을 확인한 시작 시각
+  `complete_since_seconds`(0 이상 300초 배수 정수)와 비어 있지 않은 근거를 호출자가 명시한다.
+  관측은 완료 호출을 포함한 전체 발생 이력을 유지해야 하며, 미래 예약 호출 파일은 받지 않는다.
+- 관측 시각 직전 60분이 확인된 기간 안에 있어야 한다. 이 조건이 충족되면 해당 기간의
+  108개 coverage 셀을 생성하고 네 호출 필드를 추출하여 `build_inference_features()`로 검증한다.
+- 반환값은 동일한 9개 피처 행이며 출처는 `synthetic`이다. 실제 외부 데이터는 이 연결 API를
+  사용하지 않고 별도 수집 완료 coverage와 함께 기존 온라인 API에 전달한다.
+- 시뮬레이션 진행·배차·예측 정책은 실행하지 않고 입력을 변경하지 않는다.
+
 ## 8. Module 3 수요 예측 출력 — 임시 `0.1`
 
 Module 3의 첫 기준 예측기와 Module 4의 후속 소비자가 공유할 임시 계약이다.

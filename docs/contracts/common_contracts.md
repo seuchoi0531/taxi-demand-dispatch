@@ -218,8 +218,32 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
   시각, 구역 순으로 정렬한다. `source_kind`는 출처 표시이며 학습 피처가 아니다.
 - `aggregates.csv`는 `interval_start_seconds,zone_id,is_complete,demand`를 담는다.
   누락 demand는 빈 칸, 실제 0건은 0이다. `report.json`은 출처·근거·설정·분할 경계·제외 건수·품질 경고를 기록한다.
-- 향후 JSON 전송용 학습 행의 구조는 `docs/contracts/module2_training_row.schema.json`이다.
-  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 타깃을 제거한 온라인 추론 계약은 후속 합의 대상이다.
+- JSON 전송용 학습 행의 구조는 `docs/contracts/module2_training_row.schema.json`이다.
+  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 타깃을 제거한 온라인 추론 입력과 예측 출력은 8절을 따른다.
 - 공개 API: `from module2_preprocessing import aggregate_calls, build_dataset, write_dataset, write_coverage_template`.
-  Module 3 소비자는 미구현이므로 스키마 검증과 생산자 계약 테스트를 먼저 제공한다.
+  Module 3 기준 예측기는 같은 열 순서와 값 제약을 검증하여 CSV를 소비한다.
+
+## 8. Module 3 수요 예측 출력 — 임시 `0.1`
+
+Module 3의 첫 기준 예측기와 Module 4의 후속 소비자가 공유할 임시 계약이다.
+예측 방식 자체를 프로젝트 최종 모델로 확정하지 않으며, 출력 경계만 정의한다.
+
+- 입력은 7절 학습 행에서 `target_1`~`target_6`을 제거한 피처 행이다.
+  전체 호출 JSON이나 예측 시각 이후 실제 수요를 입력으로 전달하지 않는다.
+- `prediction_time_seconds`는 300초 경계이며 `zone_id`는 기존 9개 구역이다.
+- 출력 `schema_version`은 `module3-forecast-0.1`이다.
+- 출력 `model`은 `rolling-mean-12` 또는 `recent-trend`이며 예측을 만든 방식을 명시한다.
+- `predictions`는 horizon 1부터 6까지 정확히 6개이며 순서대로 정렬한다.
+  horizon k의 `interval_start_seconds`는 `prediction_time_seconds + (k-1)*300`이다.
+- `predicted_demand`는 해당 5분 구간에 그 구역에서 발생할 것으로 예상한 호출 수다.
+  유한한 0 이상 수이며 누적 수요가 아니다.
+- 실행 가능한 JSON 구조는 `docs/contracts/module3_forecast.schema.json`을 따른다.
+- 첫 기준 예측기는 직전 60분 평균인 `rolling_mean_12`를 6개 horizon에 동일하게 사용한다.
+  이는 Module 3 첫 구현에 한정한 임시 기준이며 학습된 모델이나 최종 비교 기준이 아니다.
+- 개선 예측기 `recent-trend`는 직전 구간 `lag_1`을 수준으로 사용하고,
+  `(lag_1-lag_6)/5`를 구간당 최근 추세로 계산한다. horizon h의 예측은
+  `max(0, lag_1 + 0.5 × 최근 추세 × h)`다. 미래 실제값은 사용하지 않는다.
+- Module 3 CLI의 기본 모델은 `recent-trend`다. `--model rolling-mean-12`로 기존
+  baseline을 실행할 수 있으며 비교 보고서에서는 두 결과를 함께 기록한다.
+- 공개 API는 `from module3_prediction import evaluate, load_rows, predict, write_json, write_html_report`이다.
 

@@ -65,6 +65,59 @@ Module 1 호출 JSON을 변경하지 않으며 새 라이브러리를 사용하�
 Module 3 기준 예측기가 이 CSV를 직접 검증하여 소비한다. 학습 모델 연동은 아직 구현하지 않았다.
 [Module 3 사용법](module3_prediction.md)에서 평가 명령과 한계를 확인할 수 있다.
 
+## 온라인 추론 피처
+
+PR #4의 Module 2 인계 요청에 따라 `build_inference_features()`를 제공한다.
+입력·완료 coverage·시간 경계·출력 의미는 [공용 계약 7절](contracts/common_contracts.md#module-2-온라인-추론-피처-인계-요청)을 따른다.
+
+```python
+from module2_preprocessing import build_inference_features
+
+rows = build_inference_features(
+    observed_calls, coverage,
+    prediction_time_seconds=3600, source_kind="synthetic",
+)
+from module3_prediction import predict
+forecasts = [predict(row) for row in rows]
+```
+
+전체 시나리오 대신 현재까지 관측된 네 필드 호출 배열을 전달한다.
+파일 생성이나 타깃 계산은 하지 않는다. coverage의 완료 시점이 예측 시각까지임은
+입력 제공자가 확인해야 한다.
+계약 테스트는 저장소에 포함된 Module 3의 공개 `predict()`를 직접 호출한다.
+최초 PR #4 head의 소비자 파일로 수행한 임시 검증을 최신 develop의 실제 소비자 검증으로 대체했다.
+추가 환경 변수나 생성 파일 없이 `python -m pytest`로 실행한다.
+
+### 실행 중인 합성 시뮬레이션 연결
+
+`build_simulation_features()`는 Module 1 공개 관측의 누적 이력을 네 호출 필드로
+변환하고, 호출자가 확인한 관측 기간의 coverage를 구성한다. 실제 수집 데이터에는 사용하지 않는다.
+완료 시각·근거의 의미는 공용 계약 7절을 따른다. 별도 미래 호출 파일을 읽지 않는다.
+
+다음 예시는 저장소 루트에서 실행할 수 있으며 60분 진행 후 9개 구역 예측을 출력한다.
+
+```python
+from module1_simulation import Simulation, load_config
+from module2_preprocessing import generate_scenario, build_simulation_features
+from module3_prediction import predict
+
+config = load_config("configs/module1_demo.toml")
+scenario = generate_scenario(seed=42, call_count=400, start_seconds=0,
+                             interval_seconds=10, tick_seconds=config.tick_seconds)
+simulation = Simulation(config, scenario["calls"])
+simulation.advance(round(3600 / config.tick_seconds))
+rows = build_simulation_features(
+    simulation.observe(), complete_since_seconds=0,
+    coverage_evidence="Simulation 생성 시점부터 전체 호출 이력을 보존한 합성 실행",
+)
+forecasts = [predict(row) for row in rows]
+print(forecasts)
+```
+
+`tests/integration/test_online_simulation_features.py`에서 실제 운행 완료 호출과
+시각 경계 호출을 포함한 관측, 재실행 재현성, 0건 구간, 미래 호출 거부와 두 예측 모델 연결을 검증한다.
+Module 4 계획·Module 1 재배치 실행은 각 모듈의 구현 및 전체 통합 작업에서 연결한다.
+
 개발 시 생성한 실행 예시는 `data/generated/module2_training_demo/`에 있다(버전 관리 제외).
 `generation_settings.json`은 기존 일정 간격 생성기의 재현 인자를 기록하고,
 `coverage.csv`는 해당 유한 합성 생성이 완료된 기간에 한해서만 true다.

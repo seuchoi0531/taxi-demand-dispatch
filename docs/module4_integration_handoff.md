@@ -165,7 +165,11 @@ rows = build_inference_features(
 Module 2 작업 완료 조건은 반환한 9개 행을 Module 3에 전달하여 같은 시각의 9개 예측을
 만들고, 그 결과를 Module 4 `build_plan()`이 별도 변환 없이 소비하는 것이다.
 
-## 6. Module 1·2 작업 후 통합 테스트
+## 6. Module 4 병합 이후 Module 1~4 기능 통합 테스트
+
+이 절의 통합은 현재 Module 4 PR을 `develop`에 병합하는 Git 작업을 뜻하지 않는다.
+Module 4 병합 후 Module 1의 실행, Module 2의 온라인 피처, Module 3의 예측과
+Module 4의 정책을 하나의 시뮬레이션 흐름으로 연결하는 **후속 기능 통합 작업**을 뜻한다.
 
 통합 데이터 흐름은 다음 순서를 고정한다.
 
@@ -235,10 +239,15 @@ Module 4 또는 별도 통합 계층에서 두 실행의 계획·이벤트·지�
 
 ## 8. PR에 전달할 요약문
 
-다음 문구를 Module 4 PR 설명의 후속 작업 항목으로 사용할 수 있다.
+다음 문구를 Module 4 PR 설명의 후속 작업 항목으로 사용할 수 있다. 아래 요청은 현재
+Module 4 PR의 병합 선행 조건이 아니라, Module 4를 `develop`에 병합한 뒤 별도 작업으로
+진행할 Module 1·2 보완과 Module 1~4 기능 통합 준비 사항이다.
 
 ```markdown
-## 다음 통합 전 요청
+## Module 4 병합 이후 후속 작업
+
+아래 항목은 현재 PR의 병합 조건이 아닙니다. Module 4를 `develop`에 병합한 뒤
+Module 1~4를 하나의 실행 흐름으로 연결하기 전에 각 담당 영역에서 진행합니다.
 
 ### Module 1
 - 공용 계약 9절에 따라 `reposition(taxi_id, destination)`와

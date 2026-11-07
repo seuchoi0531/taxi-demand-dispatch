@@ -124,7 +124,9 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
 - 잘못된 ID·지점·상태·필드·명령은 `ValueError`로 거부하고
   `command_rejected` 이벤트에 대상과 이유를 기록한다. 운행 상태는 변경하지 않는다.
   시연 스크립트에서도 오류를 숨기지 않는다.
-- 이번 Module 1 범위에는 재배치를 포함하지 않는다. 재배치 명령도 지원하지 않는다.
+- 현재 Module 1 구현에는 재배치를 포함하지 않으며 재배치 명령도 아직 지원하지 않는다.
+  Module 1 담당자가 구현할 인계 계약은 9절에 정의한다. 구현 완료 전에는 Module 4가
+  만든 `reposition` 명령을 `apply_command()`에 전달하지 않는다.
   취소·실패 호출 생명주기는 아직 미구현이다.
   호출 미배정은 정상적인 `waiting`이며 오류를 의미하지 않는다.
 
@@ -223,6 +225,38 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
 - 공개 API: `from module2_preprocessing import aggregate_calls, build_dataset, write_dataset, write_coverage_template`.
   Module 3 기준 예측기는 같은 열 순서와 값 제약을 검증하여 CSV를 소비한다.
 
+### Module 2 온라인 추론 피처 인계 요청
+
+아래 API는 Module 4 통합에 필요하지만 **현재 Module 2에는 아직 구현되지 않았다**.
+Module 2 담당자는 구현과 단위·계약 테스트를 함께 추가한다.
+
+```python
+rows = build_inference_features(
+    observed_calls,
+    coverage,
+    prediction_time_seconds=3600,
+    source_kind="synthetic",
+)
+```
+
+- 공개 진입점은 `from module2_preprocessing import build_inference_features`로 한다.
+- `observed_calls`는 6절 호출 입력의 네 필드만 가진 호출 배열이다. 예측 시각보다 미래인
+  호출을 포함하면 오류다. 예측 시각과 같은 호출은 이미 관측됐더라도 피처 구간에 넣지 않는다.
+- `prediction_time_seconds`는 3600 이상인 300초 경계다. 직전 12개 구간
+  `[t-3600,t)`만 사용한다.
+- `coverage`는 기존 coverage 행 형식으로 직전 12개 구간과 9개 구역의 완료 여부를 제공한다.
+  108개 셀 중 하나라도 없거나 `false`이면 0으로 보정하지 않고 오류다.
+- `source_kind`는 `real` 또는 `synthetic`이며 피처로 사용하지 않고 출처만 기록한다.
+- 반환값은 시각과 구역 순으로 정렬한 정확히 9개 행이다. 각 행은 7절
+  `train.csv`에서 `target_1`~`target_6`을 제거한 필드만 가진다.
+- 파일을 쓰거나 미래 타깃을 계산하지 않는다. 같은 입력은 같은 행을 반환한다.
+- 호출이 없는 완료 구간은 0이고 미완료 구간은 오류다. `lag_1`은 `[t-300,t)`,
+  `lag_12`는 `[t-3600,t-3300)`이며 rolling mean 의미는 7절과 같다.
+
+이 API의 9개 행을 Module 3 `predict()`에 하나씩 전달하면 같은 예측 시각의 9개 구역
+예측을 만들 수 있다. 오프라인 학습 CSV의 타깃 열을 제거해 온라인 입력처럼 재사용하거나
+전체 미래 호출 파일을 런타임 정책에 전달하면 안 된다.
+
 ## 8. Module 3 수요 예측 출력 — 임시 `0.1`
 
 Module 3의 첫 기준 예측기와 Module 4의 후속 소비자가 공유할 임시 계약이다.
@@ -246,4 +280,78 @@ Module 3의 첫 기준 예측기와 Module 4의 후속 소비자가 공유할 �
 - Module 3 CLI의 기본 모델은 `recent-trend`다. `--model rolling-mean-12`로 기존
   baseline을 실행할 수 있으며 비교 보고서에서는 두 결과를 함께 기록한다.
 - 공개 API는 `from module3_prediction import evaluate, load_rows, predict, write_json, write_html_report`이다.
+
+## 9. Module 4 배차·재배치 결정 — 임시 `0.1`
+
+Module 4는 Module 1의 `observe()` 결과와 선택적으로 Module 3의 9개 구역 예측을 받아
+명령 계획을 만든다. 공개 진입점은 `from module4_dispatch import build_plan`이다.
+정책은 입력을 수정하거나 Module 1을 직접 호출하지 않는다.
+
+```python
+plan = build_plan(observation, block_size_m=20.0, forecasts=forecasts)
+```
+
+- `observation`은 6절의 Module 1 `observe()` 결과다. 발생하지 않은 미래 호출은 없어야 한다.
+- `block_size_m`은 Module 1 실행 설정과 같은 유한한 양수이며 숨은 기본값을 사용하지 않는다.
+- `forecasts`를 생략하면 기준 배차만 수행한다. 전달하면 8절 형식으로 같은 모델과
+  `prediction_time_seconds`를 사용하는 9개 구역 예측이 정확히 하나씩 있어야 한다.
+- 예측 시각은 관측 시각과 같아야 한다. 재배치에는 horizon 1의 향후 5분 수요만 사용한다.
+- 반환값은 아래 필드를 정확히 가진다. `commands`만 Module 1 실행 입력이며
+  `decisions`는 선택 근거 기록이다.
+
+| 필드 | 형식 | 의미 |
+|---|---|---|
+| `schema_version` | `module4-plan-0.1` | 계획 계약 버전 |
+| `policy` | `nearest-idle` 또는 `nearest-idle+forecast-surplus-reposition` | 사용한 정책 |
+| `time_seconds` | 유한한 0 이상 수 | 관측과 결정의 시뮬레이션 시각 |
+| `commands` | 명령 배열 | 순서대로 실행할 `dispatch`와 `reposition` 명령 |
+| `decisions` | 결정 기록 배열 | 각 명령과 같은 순서의 선택 근거 |
+
+`dispatch` 결정 기록은 `type`, `taxi_id`, `call_id`, `wait_seconds`,
+`pickup_distance_m`를 가진다. `reposition` 결정 기록은 `type`, `taxi_id`,
+`source_zone_id`, `target_zone_id`, `destination`, `forecast_demand`,
+`target_deficit_before`, `reposition_distance_m`를 가진다. 모든 시간과 거리는
+0 이상이며 계획 입력과 같은 단위를 사용한다.
+
+### 기준 배차
+
+1. `waiting` 호출을 `requested_at_seconds`, `call_id` 순서로 처리한다.
+2. 각 호출에 도로 Manhattan 거리가 가장 짧은 `idle` 택시를 한 대 선택한다.
+3. 거리 동률은 `taxi_id` 순서로 해결하며 같은 계획에서 택시를 중복 선택하지 않는다.
+4. 명령은 기존 `{"type":"dispatch","taxi_id":...,"call_id":...}` 형식이다.
+
+### 예측 기반 재배치
+
+배차 후 남은 `idle` 택시만 대상으로 한다. 구역별 필요 대수는 horizon 1
+`predicted_demand`의 올림값이다. 현재 구역의 필요 대수를 초과한 택시만 다른 구역으로
+옮기며, 부족량이 큰 구역, 예측 수요가 큰 구역, `zone_id` 순으로 목적 구역을 정한다.
+이동 택시는 목적지까지 도로 거리가 짧은 순, `taxi_id` 순으로 선택한다.
+구역의 기준 교차로는 남서쪽 꼭짓점 `[zone_x, zone_y]`다.
+
+Module 4가 생성하는 재배치 명령은 다음 세 필드만 가진다.
+
+```json
+{"type": "reposition", "taxi_id": "taxi-1", "destination": [2, 1]}
+```
+
+### Module 1 담당자 구현 요청
+
+Module 1에는 아래 동작이 **아직 구현되지 않았다**. 담당자는 이 계약에 맞춰 구현하고
+Module 1·계약·통합 테스트를 함께 추가한다.
+
+- `reposition(taxi_id: str, destination: list[int]) -> None`을 공개한다.
+- `apply_command()`가 위 `reposition` 명령을 같은 의미로 받아 반환값 없이 실행한다.
+- 존재하는 `idle` 택시와 0~3 정수 교차로만 허용한다. 알 수 없는 필드, 잘못된 ID·상태·좌표는
+  현재 `dispatch`와 같이 `command_rejected`를 기록하고 `ValueError`를 발생시킨다.
+- 수락하면 택시 상태를 `repositioning`으로 바꾸고 최단 도로 경로로 이동한다.
+  이동 중 새 배차로 중단하지 않으며 도착하면 `idle`로 돌아간다.
+- 출발지와 목적지가 같으면 같은 시각에 시작·완료하고 `idle` 상태를 유지한다.
+- `reposition_started`, `reposition_completed` 이벤트에 `taxi_id`와 목적지를 기록한다.
+- 관측의 택시 상태에 `repositioning`을 허용한다. `call_id`는 계속 `null`이다.
+- 택시별 측정에 `reposition_seconds`를 추가한다. 재배치 거리는 기존
+  `empty_distance_m`과 `distance_m`에 모두 포함한다.
+- `idle_seconds + pickup_seconds + occupied_seconds + reposition_seconds`는 관측 기간과 같다.
+
+Module 1 구현 전에도 Module 4의 재배치 명령 형식과 결정 근거는 계약 테스트로 검증한다.
+실제 재배치 실행, 이동 이벤트와 시간 측정은 Module 1 구현 후 통합 검증한다.
 

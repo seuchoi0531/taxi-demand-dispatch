@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Module 3 demand forecast 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "model", "prediction_time_seconds", "zone_id", "interval_seconds", "predictions"],
+  "properties": {
+    "schema_version": {"const": "module3-forecast-0.1"},
+    "model": {"enum": ["rolling-mean-12", "recent-trend"]},
+    "prediction_time_seconds": {"type": "integer", "minimum": 0, "multipleOf": 300},
+    "zone_id": {"type": "string", "pattern": "^zone-[0-2]-[0-2]$"},
+    "interval_seconds": {"const": 300},
+    "predictions": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["horizon", "interval_start_seconds", "predicted_demand"],
+        "properties": {
+          "horizon": {"type": "integer", "minimum": 1, "maximum": 6},
+          "interval_start_seconds": {"type": "integer", "minimum": 0, "multipleOf": 300},
+          "predicted_demand": {"type": "number", "minimum": 0}
+        }
+      }
+    }
+  }
+}

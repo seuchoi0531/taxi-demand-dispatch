@@ -2,7 +2,8 @@
 
 가상 도시에서 수요 예측과 동적 배차를 비교하는 Python 프로젝트입니다.
 현재 구현은 Module 1의 차량·승객 운행과 명령 실행 환경,
-Module 2의 합성 호출 생성 및 coverage 기반 학습 데이터 전처리입니다.
+Module 2의 합성 호출 생성 및 coverage 기반 학습 데이터 전처리,
+Module 3의 과거 60분 평균 기준 수요 예측입니다.
 
 - 3×3 블록 도시와 도로
 - 택시 3대의 대기·픽업·탑승 운행·하차
@@ -29,6 +30,8 @@ Windows에서는 `.venv\Scripts\python.exe`로 같은 명령을 실행할 수 �
 python -m pytest
 python -m module1_simulation --headless --steps 1200 --events
 python -m module1_simulation --manual
+python -m module3_prediction evaluate --input <validation.csv> --output <evaluation.json> --model recent-trend
+python -m module3_prediction report --input <validation.csv> --output <evaluation.html> --model recent-trend
 ```
 
 Space로 일시정지/재개, R로 초기화합니다. 1/2/3은 0.5/1/2배속,
@@ -52,10 +55,12 @@ Space로 일시정지/재개, R로 초기화합니다. 1/2/3은 0.5/1/2배속,
 Module 2는 유한 호출 생성, 수집 누락을 구분하는 집계와 피처·타깃 생성,
 시간순 분할 및 Module 3용 CSV 출력을 제공합니다.
 [Module 2 사용법](docs/module2_preprocessing.md)을 참고하세요.
-Module 3~4는 아직 기본 패키지만 있습니다. 설정은 `configs/`, 테스트는
-`tests/`, 공용 명세와 계약은 `docs/`에서 관리합니다.
+Module 3는 Module 2 CSV를 검증하여 읽고 60분 평균 baseline과 최근 추세 보정 예측,
+MAE 비교 및 브라우저용 HTML 평가 보고서를 제공합니다.
+[Module 3 사용법](docs/module3_prediction.md)을 참고하세요. Module 4는 아직 기본 패키지만 있습니다.
+설정은 `configs/`, 테스트는 `tests/`, 공용 명세와 계약은 `docs/`에서 관리합니다.
 
-예측·Module 4의 정식 배차 정책·비교 실험은 아직 구현하지 않았습니다.
+학습 수요 모델·Module 4의 정식 배차 정책·비교 실험은 아직 구현하지 않았습니다.
 차량 충돌과 교통 신호는 모델링하지 않습니다. 제공된 Unity Asset 대신
 기본 도형을 사용하며 Asset 적용은 후속 작업입니다. 승객 보행·취소도 미구현입니다.
 사용법은 [Module 1 설명](docs/module1_simulation.md), 시간·구역·명령·상태의

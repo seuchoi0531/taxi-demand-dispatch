@@ -62,7 +62,8 @@ Module 1 호출 JSON을 변경하지 않으며 새 라이브러리를 사용하�
 `aggregate_calls`와 `build_dataset`은 호출 JSON 객체와 coverage 행 목록을 받는다.
 관측 시작·종료 시각과 tick을 명시한다. `build_dataset`은 출처·완료 근거도 필수다.
 반환값은 `aggregates`, `splits`, `report`이며 `write_dataset`으로 저장한다.
-현재 로컬에는 Module 3 소비자가 없어 실제 모델 학습 연동은 검증하지 않았다.
+Module 3 기준 예측기가 이 CSV를 직접 검증하여 소비한다. 학습 모델 연동은 아직 구현하지 않았다.
+[Module 3 사용법](module3_prediction.md)에서 평가 명령과 한계를 확인할 수 있다.
 
 ## 온라인 추론 피처
 
@@ -76,7 +77,6 @@ rows = build_inference_features(
     observed_calls, coverage,
     prediction_time_seconds=3600, source_kind="synthetic",
 )
-# Module 3 구현이 있는 환경에서:
 from module3_prediction import predict
 forecasts = [predict(row) for row in rows]
 ```
@@ -84,11 +84,9 @@ forecasts = [predict(row) for row in rows]
 전체 시나리오 대신 현재까지 관측된 네 필드 호출 배열을 전달한다.
 파일 생성이나 타깃 계산은 하지 않는다. coverage의 완료 시점이 예측 시각까지임은
 입력 제공자가 확인해야 한다. 런타임 이력 수집기와 전체 모듈 실행기 연결은 이번 범위에 포함하지 않는다.
-계약 테스트는 설치된 Module 3의 공개 `predict()`를 사용한다. 로컬에 소비자가 없으면
-`MODULE3_CONTRACT_BASELINE`에 검증할 Module 3 `baseline.py` 경로를 지정할 수 있다.
-이번 호환 검증은 PR #4 head `bd6f49c5e20a0f688b246839d3737dfa30772f2d`의
-`module3_prediction/baseline.py`를 `data/generated/pr4_contract/`에 보관해 수행했다.
-이 검증 파일은 Git에서 제외한다. PR 변경 또는 Module 3 통합 후에는 해당 소비자로 다시 검증한다.
+계약 테스트는 저장소에 포함된 Module 3의 공개 `predict()`를 직접 호출한다.
+최초 PR #4 head의 소비자 파일로 수행한 임시 검증을 최신 develop의 실제 소비자 검증으로 대체했다.
+추가 환경 변수나 생성 파일 없이 `python -m pytest`로 실행한다.
 
 개발 시 생성한 실행 예시는 `data/generated/module2_training_demo/`에 있다(버전 관리 제외).
 `generation_settings.json`은 기존 일정 간격 생성기의 재현 인자를 기록하고,

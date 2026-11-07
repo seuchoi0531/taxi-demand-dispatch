@@ -1,26 +1,11 @@
-"""Consumer contract runs once Module 3 is available, or against a pinned file."""
-
-import importlib.util
-import os
-
-import pytest
+"""Online rows must be consumed directly by the integrated Module 3 API."""
 
 from module2_preprocessing import build_inference_features
+from module3_prediction import predict
 from tests.module2.test_inference import fixture
 
 
 def test_nine_online_rows_consumed_directly_by_module3():
-    path = os.environ.get("MODULE3_CONTRACT_BASELINE")
-    if path:
-        spec = importlib.util.spec_from_file_location("module3_contract_baseline", path)
-        consumer = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(consumer)
-        predict = consumer.predict
-    else:
-        import module3_prediction
-        if not hasattr(module3_prediction, "predict"):
-            pytest.skip("Module 3 is absent; set MODULE3_CONTRACT_BASELINE to its pinned baseline.py")
-        predict = module3_prediction.predict
     rows = build_inference_features(*fixture(), prediction_time_seconds=3600,
                                     source_kind="synthetic")
     for model in ("rolling-mean-12", "recent-trend"):

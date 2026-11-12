@@ -69,9 +69,10 @@ class _Taxi:
     route: deque = field(default_factory=deque)
     distance_m: float = 0
     empty_distance_m: float = 0
+    reposition_destination: tuple[int, int] | None = None
     completed_calls: int = 0
     times: dict = field(default_factory=lambda: dict.fromkeys(
-        ("idle_seconds", "pickup_seconds", "occupied_seconds"), 0.0))
+        ("idle_seconds", "pickup_seconds", "occupied_seconds", "reposition_seconds"), 0.0))
 
 
 @dataclass(frozen=True)
@@ -196,21 +197,34 @@ class Simulation:
     def dispatch(self, taxi_id: str, call_id: str) -> None:
         self.apply_command(dict(type="dispatch", taxi_id=taxi_id, call_id=call_id))
 
+    def reposition(self, taxi_id: str, destination: list[int]) -> None:
+        self.apply_command(dict(type="reposition", taxi_id=taxi_id, destination=destination))
+
     def apply_command(self, command: dict) -> None:
         try:
             if not isinstance(command, dict):
                 raise ValueError("command: expected a dict")
             kind = command.get("type")
-            if kind != "dispatch":
+            if kind not in ("dispatch", "reposition"):
                 raise ValueError(f"unknown command type: {kind!r}")
-            fields(command, {"type", "taxi_id", "call_id"}, "command")
+            fields(command, {"type", "taxi_id", "call_id" if kind == "dispatch" else "destination"}, "command")
             identifier(command["taxi_id"], "taxi_id")
-            identifier(command["call_id"], "call_id")
             taxi = self._taxis.get(command["taxi_id"])
             if taxi is None:
                 raise ValueError(f"unknown taxi_id: {command['taxi_id']}")
             if taxi.state != "idle":
                 raise ValueError(f"{taxi.taxi_id}: taxi must be idle, is {taxi.state}")
+            if kind == "reposition":
+                destination = node(command["destination"], "destination")
+                route = self.city.shortest_path(taxi.current_node, destination)
+                taxi.state = "repositioning"
+                taxi.reposition_destination = destination
+                taxi.route = deque(route)
+                self._record("reposition_started", self.time_seconds, taxi.taxi_id,
+                             destination=list(destination))
+                self._settle(taxi, self.time_seconds)
+                return
+            identifier(command["call_id"], "call_id")
             passenger = self._passengers.get(command["call_id"])
             if passenger is None:
                 raise ValueError(f"call not available: {command['call_id']}")
@@ -246,6 +260,11 @@ class Simulation:
                 self._record("pickup_completed", time, taxi.taxi_id, passenger.call_id)
                 self._record("trip_started", time, taxi.taxi_id, passenger.call_id)
                 taxi.route = deque(self.city.shortest_path(taxi.current_node, passenger.destination))
+            elif taxi.state == "repositioning":
+                self._record("reposition_completed", time, taxi.taxi_id,
+                             destination=list(taxi.reposition_destination))
+                taxi.state = "idle"
+                taxi.reposition_destination = None
             elif taxi.state == "occupied":
                 passenger = self._passengers[taxi.call_id]
                 if passenger.state != "onboard" or passenger.taxi_id != taxi.taxi_id:
@@ -259,7 +278,8 @@ class Simulation:
 
     def _move(self, taxi: _Taxi, budget: float, start: float) -> None:
         elapsed = 0.0
-        time_fields = {"to_pickup": "pickup_seconds", "occupied": "occupied_seconds"}
+        time_fields = {"to_pickup": "pickup_seconds", "occupied": "occupied_seconds",
+                       "repositioning": "reposition_seconds"}
         while budget > 0:
             if taxi.state == "idle":
                 taxi.times["idle_seconds"] += budget

@@ -39,13 +39,12 @@ plan = build_plan(
 
 ## 현재 통합 제한
 
-`dispatch` 명령은 현재 Module 1에서 실행할 수 있다. `reposition` 명령은 Module 4에서
-생성하고 형식을 검증하지만 Module 1에는 아직 실행 기능이 없다. 따라서 담당자가 공용 계약
-9절의 `reposition()` 상태 전이·이벤트·측정 규칙을 구현하기 전에는 재배치 명령을
-`Simulation.apply_command()`에 전달하면 안 된다.
+`dispatch`와 `reposition` 명령은 모두 `Simulation.apply_command()`로 변환 없이 실행한다.
+재배치 실행은 공용 계약 9절을 따르며 외부 정책 사용 시 개발용 자동 배차를 끈다.
+Module 2 온라인 피처도 구현되어 Module 3에 전달할 수 있다.
 
-공차 시간의 최종 산식과 기준·예측 정책의 최종 평가는 아직 확정되지 않았다. 실제 재배치
-실행과 동일 시나리오 비교는 Module 1 인계 구현 후 진행한다.
+공차 시간의 최종 산식과 기준·예측 정책의 최종 평가는 아직 확정되지 않았다.
+전체 동일 시나리오 비교 실행기와 보고서는 별도 통합 작업이다.
 
 현재 PR의 검증 범위, 계획 시각화 구현 항목, Module 1·2 담당자 요청과 통합 테스트 절차는
 [Module 4 검증·시각화 및 인계 가이드](module4_integration_handoff.md)를 따른다.

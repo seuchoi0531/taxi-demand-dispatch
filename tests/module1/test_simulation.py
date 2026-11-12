@@ -66,7 +66,7 @@ def test_complete_passenger_journey_and_time_accounting(config):
     sim.advance(40)
     measured = sim.metrics()
     assert measured["by_taxi"]["taxi-1"] == pytest.approx(dict(
-        idle_seconds=3, pickup_seconds=4, occupied_seconds=8, reposition_seconds=0,
+        idle_seconds=3, pickup_seconds=4, occupied_seconds=8,
         distance_m=60, empty_distance_m=20, completed_calls=1))
     assert measured["mean_wait_seconds"] == pytest.approx(5)
     assert measured["occupancy_percent"] == pytest.approx(100 * 8 / 45)

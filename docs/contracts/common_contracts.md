@@ -220,15 +220,14 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
   시각, 구역 순으로 정렬한다. `source_kind`는 출처 표시이며 학습 피처가 아니다.
 - `aggregates.csv`는 `interval_start_seconds,zone_id,is_complete,demand`를 담는다.
   누락 demand는 빈 칸, 실제 0건은 0이다. `report.json`은 출처·근거·설정·분할 경계·제외 건수·품질 경고를 기록한다.
-- JSON 전송용 학습 행의 구조는 `docs/contracts/module2_training_row.schema.json`이다.
-  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 타깃을 제거한 온라인 추론 입력과 예측 출력은 8절을 따른다.
+- 향후 JSON 전송용 학습 행의 구조는 `docs/contracts/module2_training_row.schema.json`이다.
+  CSV와 동일한 필드를 JSON 수치형으로 표현한다. 온라인 추론 계약은 아래 인계 기준을 따른다.
 - 공개 API: `from module2_preprocessing import aggregate_calls, build_dataset, write_dataset, write_coverage_template`.
   Module 3 기준 예측기는 같은 열 순서와 값 제약을 검증하여 CSV를 소비한다.
 
 ### Module 2 온라인 추론 피처 인계 요청
 
-아래 API는 Module 4 통합에 필요하지만 **현재 Module 2에는 아직 구현되지 않았다**.
-Module 2 담당자는 구현과 단위·계약 테스트를 함께 추가한다.
+PR #4의 인계 요청에 따라 구현한 온라인 추론 API다.
 
 ```python
 rows = build_inference_features(
@@ -256,6 +255,23 @@ rows = build_inference_features(
 이 API의 9개 행을 Module 3 `predict()`에 하나씩 전달하면 같은 예측 시각의 9개 구역
 예측을 만들 수 있다. 오프라인 학습 CSV의 타깃 열을 제거해 온라인 입력처럼 재사용하거나
 전체 미래 호출 파일을 런타임 정책에 전달하면 안 된다.
+
+추가 검증: 과거 60분보다 오래된 호출과 t 시각 호출도 형식·ID·좌표·시각을 검증한다.
+오래된 호출은 집계에서 제외하고, coverage는 직전 108개 셀만 받으며 범위 밖 행은 오류다.
+tick 인자가 없는 온라인 API는 유한한 0 이상 호출 시각을 받고 별도 tick 정렬을 강제하지 않는다.
+
+### 합성 시뮬레이션 관측 연결
+
+- 공개 `build_simulation_features(observation, *, complete_since_seconds, coverage_evidence)`는
+  Module 1 `observe()`의 누적 호출 이력을 온라인 피처로 연결한다. 합성 시뮬레이션 전용이다.
+- 호출이 없다는 이유로 완료를 추정하지 않는다. 호출 누락 없이 관측됐음을 확인한 시작 시각
+  `complete_since_seconds`(0 이상 300초 배수 정수)와 비어 있지 않은 근거를 호출자가 명시한다.
+  관측은 완료 호출을 포함한 전체 발생 이력을 유지해야 하며, 미래 예약 호출 파일은 받지 않는다.
+- 관측 시각 직전 60분이 확인된 기간 안에 있어야 한다. 이 조건이 충족되면 해당 기간의
+  108개 coverage 셀을 생성하고 네 호출 필드를 추출하여 `build_inference_features()`로 검증한다.
+- 반환값은 동일한 9개 피처 행이며 출처는 `synthetic`이다. 실제 외부 데이터는 이 연결 API를
+  사용하지 않고 별도 수집 완료 coverage와 함께 기존 온라인 API에 전달한다.
+- 시뮬레이션 진행·배차·예측 정책은 실행하지 않고 입력을 변경하지 않는다.
 
 ## 8. Module 3 수요 예측 출력 — 임시 `0.1`
 
@@ -354,4 +370,3 @@ Module 1·계약·통합 테스트를 함께 추가한다.
 
 Module 1 구현 전에도 Module 4의 재배치 명령 형식과 결정 근거는 계약 테스트로 검증한다.
 실제 재배치 실행, 이동 이벤트와 시간 측정은 Module 1 구현 후 통합 검증한다.
-

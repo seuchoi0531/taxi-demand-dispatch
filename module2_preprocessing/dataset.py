@@ -44,10 +44,16 @@ def write_coverage_template(path, *, start_seconds, end_seconds):
 
 def aggregate_calls(scenario, coverage, *, start_seconds, end_seconds, tick_seconds):
     """Return all time/zone cells; unknown coverage is None rather than zero."""
-    _bounds(start_seconds, end_seconds)
     if (type(tick_seconds) not in (int, float) or not math.isfinite(tick_seconds)
             or tick_seconds <= 0):
         raise ValueError("tick_seconds: expected a finite positive number")
+    return _aggregate_calls(scenario, coverage, start_seconds=start_seconds,
+                            end_seconds=end_seconds, tick_seconds=tick_seconds)
+
+
+def _aggregate_calls(scenario, coverage, *, start_seconds, end_seconds, tick_seconds=None):
+    """Shared aggregation; online observations do not impose a simulation tick."""
+    _bounds(start_seconds, end_seconds)
     if (not isinstance(scenario, dict) or set(scenario) != {"schema_version", "calls"}
             or scenario["schema_version"] != "0.1" or not isinstance(scenario["calls"], list)):
         raise ValueError("scenario: expected existing Module 1 JSON contract 0.1")
@@ -84,9 +90,10 @@ def aggregate_calls(scenario, coverage, *, start_seconds, end_seconds, tick_seco
         t = call["requested_at_seconds"]
         if type(t) not in (int, float) or not math.isfinite(t) or not start_seconds <= t < end_seconds:
             raise ValueError(f"{ident}: time outside observation bounds or invalid")
-        ratio = t / tick_seconds
-        if not math.isfinite(ratio) or not math.isclose(round(ratio) * tick_seconds, t, rel_tol=0, abs_tol=1e-9):
-            raise ValueError(f"{ident}: time must be tick aligned")
+        if tick_seconds is not None:
+            ratio = t / tick_seconds
+            if not math.isfinite(ratio) or not math.isclose(round(ratio) * tick_seconds, t, rel_tol=0, abs_tol=1e-9):
+                raise ValueError(f"{ident}: time must be tick aligned")
         x, y = call["origin"]
         key = (int(t // 300) * 300, f"zone-{min(x, 2)}-{min(y, 2)}")
         counts[key] = counts.get(key, 0) + 1

@@ -314,7 +314,7 @@ class CityApp(ShowBase):
         taxis = self.simulation.snapshot()
         passengers = self.simulation.passenger_snapshots()
         colors = {"idle": (1, 0.82, 0.3, 1), "to_pickup": (0.25, 0.55, 1, 1),
-                  "occupied": (0.22, 0.75, 0.48, 1)}
+                  "occupied": (0.22, 0.75, 0.48, 1), "repositioning": (0.65, 0.35, 0.9, 1)}
         for taxi in taxis:
             node = self.taxi_nodes[taxi.taxi_id]
             node.setPos(taxi.x_m, taxi.y_m, 0.1)
@@ -330,7 +330,8 @@ class CityApp(ShowBase):
         self._summary.setText(f"Waiting {waiting}   /   Onboard {onboard}   /   Completed {metrics['completed_calls']}")
         wait = metrics["mean_wait_seconds"]
         self._wait_summary.setText("Mean pickup wait   " + (f"{wait:.1f} s" if wait is not None else "-"))
-        states = {"idle": "Waiting", "to_pickup": "Picking up", "occupied": "With passenger"}
+        states = {"idle": "Waiting", "to_pickup": "Picking up", "occupied": "With passenger",
+                  "repositioning": "Repositioning"}
         for index, taxi in enumerate(taxis):
             self._fleet_rows[index].setText(f"Taxi {index + 1:02d}    {states[taxi.state]}")
             self._coordinate_rows[index].setText(

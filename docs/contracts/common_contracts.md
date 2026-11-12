@@ -124,9 +124,9 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
 - 잘못된 ID·지점·상태·필드·명령은 `ValueError`로 거부하고
   `command_rejected` 이벤트에 대상과 이유를 기록한다. 운행 상태는 변경하지 않는다.
   시연 스크립트에서도 오류를 숨기지 않는다.
-- 현재 Module 1 구현에는 재배치를 포함하지 않으며 재배치 명령도 아직 지원하지 않는다.
-  Module 1 담당자가 구현할 인계 계약은 9절에 정의한다. 구현 완료 전에는 Module 4가
-  만든 `reposition` 명령을 `apply_command()`에 전달하지 않는다.
+- `reposition(taxi_id, destination)`와 같은 의미의 `apply_command()` 명령을 지원한다.
+  재배치 동작은 9절을 따른다. 외부 정책 실행 시 `Simulation`을 직접 사용하거나
+  `DemoRunner(auto_assign=False)`로 개발용 자동 배차를 끈다.
   취소·실패 호출 생명주기는 아직 미구현이다.
   호출 미배정은 정상적인 `waiting`이며 오류를 의미하지 않는다.
 
@@ -137,6 +137,8 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
 | 호출 없음 | `call_created` | `waiting` | 발생 시각 도달, 고유 ID | 잘못된 시나리오는 실행 전 오류 |
 | 택시 `idle`, 승객 `waiting` | `assigned` | `to_pickup`, `assigned` | 유효 배차 명령 | 명령 거부, 기존 상태 유지 |
 | 택시 `to_pickup`, 승객 `assigned` | `pickup_completed`, `trip_started` | `occupied`, `onboard` | 출발지 도착 | 내부 불일치 시 실행 오류 |
+| 택시 `idle` | `reposition_started` | `repositioning` | 유효 재배치 명령 | 명령 거부, 기존 상태 유지 |
+| 택시 `repositioning` | `reposition_completed` | `idle` | 목적지 도착 | 내부 불일치 시 실행 오류 |
 | 택시 `occupied`, 승객 `onboard` | `dropoff_completed` | `idle`, `completed` | 목적지 도착 | 내부 불일치 시 실행 오류 |
 
 픽업 완료와 이동 시작은 같은 시각의 별도 이벤트이다. 하차 완료 시 택시와
@@ -157,8 +159,8 @@ Module 1 내부 dataclass는 런타임 구현이며 다른 모듈이 내부 파�
   `time_seconds`, `event`, `taxi_id`, `call_id`, `details`를 포함한다.
   동시각 순서는 기록 순서로 안정적이며 반환값 수정은 내부에 영향을 주지 않는다.
 - `metrics()`: `by_taxi`에 `idle_seconds`, `pickup_seconds`,
-  `occupied_seconds`, `distance_m`, `empty_distance_m`, `completed_calls`를 기록한다.
-  세 시간의 합은 각 택시의 관측 기간과 같다.
+  `occupied_seconds`, `reposition_seconds`, `distance_m`, `empty_distance_m`, `completed_calls`를 기록한다.
+  네 상태별 시간의 합은 각 택시의 관측 기간과 같다.
 - 전체 지표: `fleet_available_seconds`, `completed_calls`, `pending_calls`,
   `picked_up_calls`, `mean_wait_seconds`(탑승 완료된 승객만의 평균, 표본 없으면 null),
   `occupancy_percent`(공통 명세 산식, 기간 0이면 null), `rejected_commands`.
@@ -350,10 +352,9 @@ Module 4가 생성하는 재배치 명령은 다음 세 필드만 가진다.
 {"type": "reposition", "taxi_id": "taxi-1", "destination": [2, 1]}
 ```
 
-### Module 1 담당자 구현 요청
+### Module 1 재배치 실행
 
-Module 1에는 아래 동작이 **아직 구현되지 않았다**. 담당자는 이 계약에 맞춰 구현하고
-Module 1·계약·통합 테스트를 함께 추가한다.
+Module 1은 다음 동작을 구현하며 Module 1·계약·통합 테스트로 검증한다.
 
 - `reposition(taxi_id: str, destination: list[int]) -> None`을 공개한다.
 - `apply_command()`가 위 `reposition` 명령을 같은 의미로 받아 반환값 없이 실행한다.
@@ -368,5 +369,4 @@ Module 1·계약·통합 테스트를 함께 추가한다.
   `empty_distance_m`과 `distance_m`에 모두 포함한다.
 - `idle_seconds + pickup_seconds + occupied_seconds + reposition_seconds`는 관측 기간과 같다.
 
-Module 1 구현 전에도 Module 4의 재배치 명령 형식과 결정 근거는 계약 테스트로 검증한다.
-실제 재배치 실행, 이동 이벤트와 시간 측정은 Module 1 구현 후 통합 검증한다.
+Module 4 명령을 변환 없이 실행하고 이동·이벤트·측정을 계약·통합 테스트로 검증한다.

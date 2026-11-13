@@ -1,7 +1,7 @@
 # Module 1 차량·승객 운행
 
 Module 1은 호출 시나리오를 읽고 지정된 택시가 승객을 픽업·운송하도록 한다.
-이번 구현 범위는 택시와 승객이며, 재배치 기능은 포함하지 않는다.
+택시·승객 운행과 외부에서 받은 재배치 명령 실행을 제공한다.
 예측 모델과 Module 4의 정식 배차 정책은 구현하지 않는다.
 사용자가 선택한 운행 확인용 ‘호출 순서대로 가까운 빈 택시 연결’을 개발 시연에만 사용한다.
 현재 범위는 승객의 **출발지 대기 → 픽업 → 택시 탑승 이동 → 하차**이다.
@@ -66,7 +66,7 @@ JSON 표준 출력으로 반환한다. 파일이나 외부 서비스로 전송�
 ## 화면과 조작
 
 흰 배경을 유지하며 택시 상태는 `Waiting`, `Picking up`, `With passenger`로
-표시한다. 지붕 표시는 대기 노랑·픽업 파랑·탑승 초록이다.
+표시하며 재배치 중에는 `Repositioning`을 표시한다. 지붕 표시는 대기 노랑·픽업 파랑·탑승 초록·재배치 보라다.
 출발지의 작은 사람 모형은 기다리는 승객이다. 탑승 중에는 사람 모형을 숨기고
 택시와 탑승 인원 표시로 나타낸다. 내부 승객 좌표는 택시를 따라 이동한다.
 하차한 승객은 목적지에서 3초간 표시한 뒤 화면 객체를 제거하며, 완료 기록은 보존한다.
@@ -114,7 +114,7 @@ print(sim.events())
 Module 4는 각 tick 이후 `observe()`의 현재 정보로 판단하고 명령을 전달한다.
 연결 시 `DemoRunner`의 개발용 자동 연결기를 끄고 외부 정책으로 대체한다.
 화면 재생 속도에 관계없이 같은 tick에 같은 명령을 넣으면 결과가 같아야 한다.
-평균 공차시간의 포함 항목과 분모는 아직 미확정이므로 현재는 대기·픽업·탑승
+평균 공차시간의 포함 항목과 분모는 아직 미확정이므로 대기·픽업·탑승·재배치
 시간을 각각 제공한다. 예측 기반 방식과 기준 방식의 효과 비교는 아직 미구현이다.
 
 ## 검증과 남은 범위
@@ -123,6 +123,30 @@ Module 4는 각 tick 이후 `observe()`의 현재 정보로 판단하고 명령�
 비노출·같은 시각 처리, 통합 테스트는 시나리오·시연 명령·3대 운행과 시간 합계를 검증한다.
 
 제공 Unity Asset 적용, 실제 보행과 승객 취소는 후속 작업이다.
-재배치와 예측·자동 배차 정책·비교 실험은 이번 Module 1 구현 범위가 아니다.
+예측·자동 배차 정책과 전체 비교 실험 실행기는 별도 담당 범위다.
 기본 3D 도형을 사용하며
 과제의 제공 Asset 활용 요구까지 완료한 것은 아니다.
+
+
+## 외부 재배치 명령 검증
+
+동작·상태·이벤트·측정은 [공용 계약 9절](contracts/common_contracts.md#9-module-4-배차재배치-결정--임시-01)을 따른다.
+외부 정책은 `Simulation`에 직접 명령한다. 화면이나 개발용 호출 생성이 필요할 때는
+`DemoRunner(sim, auto_assign=False)`를 사용한다. 기존 `--manual`도 자동 배차를 끈다.
+`DemoRunner(auto_assign=True)`와 외부 정책을 함께 실행하지 않는다.
+
+```python
+from module1_simulation import Simulation, load_config
+
+sim = Simulation(load_config("configs/module1_demo.toml"))
+sim.apply_command({"type": "reposition", "taxi_id": "taxi-1", "destination": [2, 1]})
+sim.advance(260)
+print(sim.observe())
+print(sim.events())
+```
+
+```bash
+python -m pytest tests/module1 tests/contracts/test_module4_commands.py tests/integration/test_module4_flow.py
+```
+
+전체 Module 1→2→3→4 비교 실행기와 보고서는 이번 실행 경계 구현에 포함하지 않는다.

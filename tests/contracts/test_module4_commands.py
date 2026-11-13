@@ -23,7 +23,7 @@ def test_dispatch_command_remains_executable_by_module1():
     assert simulation.observe()["passengers"][0]["state"] == "onboard"
 
 
-def test_reposition_command_matches_pending_module1_handoff_contract():
+def test_reposition_command_matches_module1_execution_contract():
     state = observation(taxis=[taxi("taxi-a", (0, 0)), taxi("taxi-b", (0, 0))])
     plan = build_plan(
         state,
@@ -34,3 +34,17 @@ def test_reposition_command_matches_pending_module1_handoff_contract():
 
     assert command == {"type": "reposition", "taxi_id": "taxi-a", "destination": [2, 2]}
     assert set(command) == {"type", "taxi_id", "destination"}
+
+
+def test_generated_reposition_runs_without_conversion():
+    simulation = Simulation(load_config("configs/module1_demo.toml"))
+    plan = build_plan(simulation.observe(), block_size_m=simulation.config.block_size_m,
+                      forecasts=forecasts({"zone-0-2": 1}, prediction_time=0))
+    for command in plan["commands"]:
+        simulation.apply_command(command)
+    assert any(t["state"] == "repositioning" and t["call_id"] is None
+               for t in simulation.observe()["taxis"])
+    simulation.advance(400)
+    assert all(t["state"] == "idle" for t in simulation.observe()["taxis"])
+    assert any(e["event"] == "reposition_completed" and e["details"]["destination"] == [0, 2]
+               for e in simulation.events())

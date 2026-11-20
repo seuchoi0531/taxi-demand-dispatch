@@ -9,10 +9,53 @@ from direct.showbase.ShowBase import ShowBase
 from panda3d.core import (
     AmbientLight, AntialiasAttrib, ClockObject, DirectionalLight, Geom, GeomNode,
     GeomTriangles, GeomVertexData, GeomVertexFormat, GeomVertexWriter,
-    NodePath, TextNode, Vec4, WindowProperties,
+    Filename, NodePath, TextNode, Vec4, WindowProperties,
 )
 
 from .demo import DemoRunner
+
+
+def _load_system_font(loader):
+    """Load the first usable system font using Panda's platform path format."""
+    sources = (
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    )
+    for source in sources:
+        path = Path(source)
+        if not path.is_file():
+            continue
+        panda_path = str(Filename.from_os_specific(str(path.resolve())))
+        try:
+            font = loader.loadFont(panda_path)
+        except OSError:
+            continue
+        font.setPixelsPerUnit(80)
+        return font
+    return None
+
+
+def _format_event(event):
+    """Format the events that are useful while judging a live scenario."""
+    time = f"{event['time_seconds']:7.1f}s"
+    name = event["event"]
+    taxi = event.get("taxi_id") or "-"
+    call = (event.get("call_id") or "-").removeprefix("live-")
+    details = event.get("details", {})
+    if name == "call_created":
+        return f"{time} CALL {call} {details['origin']} -> {details['destination']}"
+    if name == "assigned":
+        return f"{time} ASSIGN {call} -> {taxi}"
+    if name == "pickup_completed":
+        return f"{time} PICKUP {call} by {taxi}"
+    if name == "dropoff_completed":
+        return f"{time} DROPOFF {call} by {taxi}"
+    if name == "reposition_started":
+        return f"{time} REPOSITION {taxi} -> {details['destination']}"
+    if name == "reposition_completed":
+        return f"{time} REPOSITIONED {taxi}"
+    return f"{time} {name} {call} {taxi}"
 
 
 def _unit_box() -> NodePath:
@@ -49,9 +92,10 @@ class CityApp(ShowBase):
         self.disableMouse()
         self.runner = runner
         self.simulation = runner.simulation
+        self.manual_controls = getattr(runner, "manual_controls", not runner.auto_assign)
         self._selected_taxi = 0
         self._selected_call = 0
-        self._message = ""
+        self._message = getattr(runner, "initial_message", "")
         self.paused = False
         self.playback_speed = 1.0
         self._accumulator = 0.0
@@ -78,9 +122,10 @@ class CityApp(ShowBase):
         self.accept("space", self.toggle_pause)
         self.accept("r", self.reset_simulation)
         self.accept("d", self.toggle_details)
-        self.accept("t", self.cycle_selection, ["taxi"])
-        self.accept("c", self.cycle_selection, ["call"])
-        self.accept("enter", self.manual_dispatch)
+        if self.manual_controls:
+            self.accept("t", self.cycle_selection, ["taxi"])
+            self.accept("c", self.cycle_selection, ["call"])
+            self.accept("enter", self.manual_dispatch)
         self.accept("escape", self.userExit)
         for key, speed in (("1", 0.5), ("2", 1.0), ("3", 2.0)):
             self.accept(key, self.set_speed, [speed])
@@ -96,14 +141,7 @@ class CityApp(ShowBase):
 
     def _build_hud(self) -> None:
         # Use a local system font when available; keep Panda's font as fallback.
-        self._font = None
-        for source in ("/System/Library/Fonts/Supplemental/Arial.ttf",
-                       "C:/Windows/Fonts/arial.ttf",
-                       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
-            if Path(source).is_file():
-                self._font = self.loader.loadFont(source)
-                self._font.setPixelsPerUnit(80)
-                break
+        self._font = _load_system_font(self.loader)
 
         def text(value, parent, x, y, size=0.032, color=(0.42, 0.46, 0.5, 1),
                  align=TextNode.ALeft, change=False):
@@ -123,6 +161,12 @@ class CityApp(ShowBase):
                              align=TextNode.ARight, change=True)
         self._wait_summary = text("", self.a2dTopRight, -0.09, -0.35, 0.027,
                                   align=TextNode.ARight, change=True)
+        self._integration = text("", self.a2dTopRight, -0.09, -0.40, 0.026,
+                                 (0.28, 0.34, 0.4, 1), TextNode.ARight, True)
+        self._active_calls = text("", self.a2dTopRight, -0.09, -0.60, 0.024,
+                                  align=TextNode.ARight, change=True)
+        self._event_log = text("", self.a2dTopRight, -0.09, -0.83, 0.021,
+                               align=TextNode.ARight, change=True)
         self._fleet_rows = []
         self._coordinate_rows = []
         for index in range(3):
@@ -134,13 +178,18 @@ class CityApp(ShowBase):
                                          (0.24, 0.28, 0.32, 1), change=True))
             self._coordinate_rows.append(text("", self.a2dTopLeft, 0.12, y - 0.055,
                                               0.026, change=True))
-        mode = "Auto demo / nearest available taxi" if self.runner.auto_assign else "Manual / waiting for commands"
+        mode = getattr(
+            self.runner,
+            "mode_label",
+            "Auto demo / nearest available taxi"
+            if self.runner.auto_assign else "Manual / waiting for commands",
+        )
         self._mode_text = text(mode,
                                self.a2dTopLeft, 0.09, -0.93, 0.027)
         self._selection = text("", self.a2dTopLeft, 0.09, -1.04, 0.026, change=True)
         self._notice = text("", self.a2dBottomLeft, 0.09, 0.22, 0.027,
                             (0.65, 0.28, 0.18, 1), change=True)
-        text("SPACE  Play / pause     R  Reset     1 / 2 / 3  Speed",
+        text("SPACE  Play / pause     R  Replay     1 / 2 / 3  Speed",
              self.a2dBottomLeft, 0.09, 0.14, 0.027)
         text("Arrows  Orbit     Scroll  Zoom     D  Coordinates     Esc  Exit",
              self.a2dBottomLeft, 0.09, 0.09, 0.027)
@@ -157,7 +206,9 @@ class CityApp(ShowBase):
         self.refresh()
 
     def manual_dispatch(self) -> None:
-        if self.runner.auto_assign:
+        if not self.manual_controls:
+            self._message = "Manual assignment is disabled in this scenario."
+        elif self.runner.auto_assign:
             self._message = "Manual controls: restart with --manual."
         else:
             taxi = self.simulation.snapshot()[self._selected_taxi]
@@ -246,6 +297,7 @@ class CityApp(ShowBase):
 
     def _passenger(self, call_id: str):
         root = self.render.attachNewNode(f"passenger-{call_id}")
+        self._box(root, (0, 0, 3.25), (0.16, 0.16, 2.2), (1, 0.3, 0.12, 1))
         self._box(root, (0, 0, 0.9), (0.65, 0.45, 1.05), (0.2, 0.5, 0.9, 1))
         self._box(root, (0, 0, 1.7), (0.5, 0.5, 0.5), (0.95, 0.76, 0.58, 1))
         for x in (-0.19, 0.19):
@@ -255,8 +307,8 @@ class CityApp(ShowBase):
         label.setAlign(TextNode.ACenter)
         label.setTextColor(0.12, 0.3, 0.5, 1)
         label_node = root.attachNewNode(label)
-        label_node.setPos(0, 0, 2.7)
-        label_node.setScale(0.9)
+        label_node.setPos(0, 0, 5.8)
+        label_node.setScale(1.1)
         label_node.setBillboardPointEye()
         label_node.setLightOff()
         return root
@@ -305,7 +357,7 @@ class CityApp(ShowBase):
 
     def reset_simulation(self) -> None:
         self.runner.reset()
-        self._message = ""
+        self._message = getattr(self.runner, "reset_message", "")
         self._selected_call = 0
         self._accumulator = 0.0
         self.refresh()
@@ -330,6 +382,32 @@ class CityApp(ShowBase):
         self._summary.setText(f"Waiting {waiting}   /   Onboard {onboard}   /   Completed {metrics['completed_calls']}")
         wait = metrics["mean_wait_seconds"]
         self._wait_summary.setText("Mean pickup wait   " + (f"{wait:.1f} s" if wait is not None else "-"))
+        self._integration.setText(getattr(self.runner, "integration_summary", ""))
+        active = [passenger for passenger in passengers if passenger.state != "completed"]
+        active_lines = ["ACTIVE CALLS"]
+        for passenger in active[:5]:
+            taxi = passenger.taxi_id or "unassigned"
+            call = passenger.call_id.removeprefix("live-")
+            active_lines.append(
+                f"{call}  {passenger.state.upper()}  "
+                f"{list(passenger.origin)} > {list(passenger.destination)}  {taxi}"
+            )
+        if len(active) > 5:
+            active_lines.append(f"+ {len(active) - 5} more")
+        if not active:
+            active_lines.append("none")
+        self._active_calls.setText("\n".join(active_lines))
+        relevant_events = {
+            "call_created", "assigned", "pickup_completed", "dropoff_completed",
+            "reposition_started", "reposition_completed",
+        }
+        events = [
+            event for event in self.simulation.events()
+            if event["event"] in relevant_events
+        ][-5:]
+        self._event_log.setText(
+            "RECENT EVENTS\n" + ("\n".join(_format_event(event) for event in events) or "none")
+        )
         states = {"idle": "Waiting", "to_pickup": "Picking up", "occupied": "With passenger",
                   "repositioning": "Repositioning"}
         for index, taxi in enumerate(taxis):
@@ -338,7 +416,8 @@ class CityApp(ShowBase):
                 f"x {taxi.x_m:.1f} m   /   y {taxi.y_m:.1f} m" if self.show_details
                 else (taxi.call_id or ""))
         self._notice.setText(self._message)
-        if not self.runner.auto_assign:
+        self._selection.setText("")
+        if self.manual_controls:
             waiting_calls = [p for p in passengers if p.state == "waiting"]
             call = waiting_calls[self._selected_call % len(waiting_calls)].call_id if waiting_calls else "none"
             self._selection.setText(

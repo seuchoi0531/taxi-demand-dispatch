@@ -49,7 +49,25 @@ PowerShell 실행 정책으로 활성화가 차단되면 정책을 영구 변경
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-### macOS 또는 Linux
+### Windows Git Bash
+
+```bash
+git clone https://github.com/seuchoi0531/taxi-demand-dispatch.git
+cd taxi-demand-dispatch
+git switch develop
+
+py -3.13 --version
+py -3.13 -m venv .venv
+source .venv/Scripts/activate
+
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m pytest
+```
+
+활성화하지 않고 실행하려면 `./.venv/Scripts/python.exe`를 직접 사용한다.
+
+### macOS 또는 Linux bash/zsh
 
 ```bash
 git clone https://github.com/seuchoi0531/taxi-demand-dispatch.git
@@ -109,6 +127,12 @@ python --version
 python -m pytest
 
 git switch -c feat/module1-<summary>
+```
+
+Windows Git Bash에서는 같은 명령을 사용하되 가상환경 활성화 경로를 다음처럼 지정한다.
+
+```bash
+source .venv/Scripts/activate
 ```
 
 작업 유형과 모듈에 맞춰 브랜치의 `type`, `scope`와 `summary`를 바꾼다. 정확한 규칙은 `git_workflow.md`를 따른다.

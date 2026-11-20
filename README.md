@@ -15,6 +15,8 @@ Module 3의 기준·최근 추세 수요 예측과 Module 4의 배차·재배치
 
 Python 3.13을 사용합니다. 자세한 환경 설정은
 [개발 시작 가이드](docs/development_start_guide.md)를 참고하세요.
+PowerShell, Windows Git Bash와 macOS bash/zsh별 전체 실행 명령은
+[실행·테스트 명령 모음](docs/run_and_test_commands.md)을 참고하세요.
 
 ```bash
 python3.13 -m venv .venv
@@ -30,6 +32,8 @@ Windows에서는 `.venv\Scripts\python.exe`로 같은 명령을 실행할 수 �
 python -m pytest
 python -m module1_simulation --headless --steps 1200 --events
 python -m module1_simulation --manual
+python scripts/visualize_end_to_end.py
+python -m scripts.evaluate_end_to_end --output data/generated/end_to_end_report.html
 python -m module3_prediction evaluate --input <validation.csv> --output <evaluation.json> --model recent-trend
 python -m module3_prediction report --input <validation.csv> --output <evaluation.html> --model recent-trend
 ```
@@ -48,6 +52,17 @@ Space로 일시정지/재개, R로 초기화합니다. 1/2/3은 0.5/1/2배속,
 명령이 없으면 택시는 대기합니다.
 헤드리스 실행에는 `simulation` 선택 의존성과 화면이 필요하지 않습니다.
 
+`scripts/visualize_end_to_end.py`는 수동 모드가 아니라 Module 4 자동 배차를 사용합니다.
+과거 60분 동안 9개 구역 모두에서 불규칙하게 발생한 50개 호출을 미리 처리하고,
+`t=3600`의 예측과 재배치부터 화면에 보여줍니다. `t=3620`에는 세 호출이 동시에,
+`t=3623`에는 두 호출이 추가로 발생합니다. 이 화면에서는 `Enter` 배차를 사용하지 않으며
+`R`은 과거 이력을 다시 계산한 뒤 `t=3600`부터 같은 장면을 재생합니다.
+
+`scripts.evaluate_end_to_end`는 같은 합성 시나리오를 예측 사용 정책과 미사용 대조군에
+각각 실행하고 예측값·실제값·재배치 결정과 운행 지표를 HTML로 비교합니다. 이 보고서는
+통합 완료 판정표가 아닙니다. MVP 또는 기능 확장 단계의 최종 통합 검사는
+[통합 검증 체크리스트](docs/integration_validation_checklist.md)를 기준으로 별도로 수행합니다.
+
 ## 구조와 현재 제한
 
 `module1_simulation/`은 시뮬레이션, `module2_preprocessing/`은 데이터 처리,
@@ -62,7 +77,8 @@ FIFO·최근접 택시 배차를 계획하고 9개 구역 예측으로 잔여 �
 [Module 4 사용법](docs/module4_dispatch.md)을 참고하세요.
 [Module 4 통합 인계 가이드](docs/module4_integration_handoff.md)에는 현재 검증 범위,
 시각화 계획과 Module 1·2 담당자의 후속 구현·테스트 항목을 정리했습니다.
-설정은 `configs/`, 테스트는 `tests/`, 공용 명세와 계약은 `docs/`에서 관리합니다.
+설정은 `configs/`, 테스트는 `tests/`, 반복 가능한 개발용 실행은 `scripts/`,
+공용 명세와 계약은 `docs/`에서 관리합니다.
 
 학습 수요 모델·Module 4 정책의 최종 평가·비교 실험은 아직 구현하지 않았습니다.
 Module 1은 `reposition` 명령의 실제 이동·상태·이벤트·시간·공차 거리 기록을 지원합니다.
